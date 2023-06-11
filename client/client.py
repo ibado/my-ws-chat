@@ -4,21 +4,20 @@ import json
 
 
 def write_msg_blocking(ws):
+    userinput = input("<addressee,sender>: ").split(",")
+    init_chat = json.dumps({'addressee': userinput[0], 'sender': userinput[1]})
+    ws.send(init_chat)
     while True:
-        userinput = input("<addressee, sender, msg>: ").split(",")
-        encoded_smg = json.dumps(
-            {'addressee': userinput[0], 'sender': userinput[1], 'msg': userinput[2]}
-        )
-        ws.send(encoded_smg)
+        msg_input = input()
+        message = json.dumps({'msg': msg_input})
+        ws.send(message)
 
 
 def publish_msgs(ws):
     try:
         while True:
             msg = ws.recv()
-            # obj = json.loads(msg)
-            # print("new msg from: " + obj["name"] + ", Msg: " + obj["msg"])
-            print("new msg received: " + msg)
+            print(msg)
     except:
         print("Stoping msg publishing...")
 

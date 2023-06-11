@@ -33,10 +33,10 @@ struct Client {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
-struct MyMessage {
-    msg: String,
-    sender: String,
-    addressee: String,
+#[serde(untagged)]
+enum MyMessage {
+    InitChat { sender: String, addressee: String },
+    Msg { msg: String },
 }
 
 impl MyMessage {
@@ -67,50 +67,65 @@ async fn messages_handler(
 
 async fn on_upgrade(socket: WebSocket, msgs: ClientRepo) {
     let (mut sender_sock, mut receiver_sock) = socket.split();
-    // wait first msg to get the sender id/alias/handle/name
-    let mut sender = String::new();
+    let (sender_chan, mut receiver_chan) = tokio::sync::mpsc::unbounded_channel::<MyMessage>();
+    let mut addressee = String::new();
     while let Some(Ok(msg)) = receiver_sock.next().await {
         if let Message::Text(p) = msg {
             match MyMessage::from(&p) {
-                Ok(s) => {
-                    sender.push_str(&s.sender);
-                    sender_sock.send(Message::Text("Nice! You're now connected :D".to_string())).await.unwrap();
-                    break;
+                Ok(my_message) => {
+                    if let MyMessage::InitChat {
+                        sender,
+                        addressee: a,
+                    } = my_message
+                    {
+                        // persist the client sender channel
+                        msgs.clients
+                            .write()
+                            .await
+                            .insert(sender, Client { chan: sender_chan });
+                        // save addressee
+                        addressee.push_str(&a);
+                        // send `you're connected` msg
+                        sender_sock
+                            .send(Message::Text("Nice! You're now connected :D".to_string()))
+                            .await
+                            .unwrap();
+                        break;
+                    }
+                    eprintln!("wrong msg! (should be InitChat)");
                 }
-                Err(_) => {
-                    eprintln!("wrong payload! (first msg)");
+                Err(e) => {
+                    eprintln!("wrong payload! Error: {:?}", e);
                 }
             }
         }
     }
-    let (sender_chan, mut receiver_chan) = tokio::sync::mpsc::unbounded_channel::<MyMessage>();
-    // persist the client sender channel
-    msgs.clients.write().await.insert(
-        sender,
-        Client {
-            chan: sender_chan,
-        },
-    );
 
     let mut send_task = tokio::spawn(async move {
-        while let Some(m) = receiver_chan.recv().await {
-            let _ = sender_sock.send(Message::Text(m.msg)).await.unwrap();
+        while let Some(MyMessage::Msg { msg }) = receiver_chan.recv().await {
+            let _ = sender_sock.send(Message::Text(msg)).await.unwrap();
         }
+        eprintln!("Wrong msg, should be MyMessage::Msg");
     });
 
     let mut receive_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver_sock.next().await {
             if let Message::Text(payload) = msg {
                 match MyMessage::from(&payload) {
-                    Ok(my_msg) => {
-                        if let Some(client) = msgs.clients.read().await.get(&my_msg.addressee) {
-                            client.chan.send(my_msg.clone()).unwrap();
+                    Ok(MyMessage::Msg { msg }) => {
+                        if let Some(client) = msgs.clients.read().await.get(&addressee) {
+                            client.chan.send(
+                                MyMessage::Msg { msg: format!("{addressee}: {msg}") }
+                            ).unwrap();
                         } else {
                             eprintln!("Ups, somthing went wrong!");
                         }
-                    },
+                    }
                     Err(_) => {
                         eprintln!("wrong payload!");
+                    }
+                    Ok(MyMessage::InitChat { .. }) => {
+                        eprintln!("wrong msg here. (should be MyMessage::Msg)!");
                     }
                 }
             }
