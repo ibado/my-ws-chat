@@ -8,6 +8,7 @@ use axum::{
     response::IntoResponse,
     Router,
 };
+use futures_util::{sink::SinkExt, stream::StreamExt};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
@@ -26,7 +27,7 @@ impl ClientRepo {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Client {
     chan: UnboundedSender<MyMessage>,
 }
@@ -61,32 +62,63 @@ async fn messages_handler(
     ws: WebSocketUpgrade,
     State(state): State<ClientRepo>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(|socket| process(socket, state))
+    ws.on_upgrade(|socket| on_upgrade(socket, state))
 }
 
-async fn process(mut socket: WebSocket, msgs: ClientRepo) {
-    while let Some(msg) = socket.recv().await {
-        let msg = match msg {
-            Ok(msg) => msg,
-            Err(_) => return, // client disconnected
-        };
+async fn on_upgrade(socket: WebSocket, msgs: ClientRepo) {
+    let (mut sender_sock, mut receiver_sock) = socket.split();
+    // wait first msg to get the sender id/alias/handle/name
+    let mut sender = String::new();
+    while let Some(Ok(msg)) = receiver_sock.next().await {
+        if let Message::Text(p) = msg {
+            match MyMessage::from(&p) {
+                Ok(s) => {
+                    sender.push_str(&s.sender);
+                    sender_sock.send(Message::Text("Nice! You're now connected :D".to_string())).await.unwrap();
+                    break;
+                }
+                Err(_) => {
+                    eprintln!("wrong payload! (first msg)");
+                }
+            }
+        }
+    }
+    let (sender_chan, mut receiver_chan) = tokio::sync::mpsc::unbounded_channel::<MyMessage>();
+    // persist the client sender channel
+    msgs.clients.write().await.insert(
+        sender,
+        Client {
+            chan: sender_chan,
+        },
+    );
 
-        let payload = msg.into_text().unwrap();
-        let msg_to_send: MyMessage = MyMessage::from(&payload).unwrap();
+    let mut send_task = tokio::spawn(async move {
+        while let Some(m) = receiver_chan.recv().await {
+            let _ = sender_sock.send(Message::Text(m.msg)).await.unwrap();
+        }
+    });
 
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<MyMessage>();
-        msgs.clients.write().await.insert(
-            msg_to_send.sender.clone(),
-            Client {
-                chan: tx,
-            },
-        );
+    let mut receive_task = tokio::spawn(async move {
+        while let Some(Ok(msg)) = receiver_sock.next().await {
+            if let Message::Text(payload) = msg {
+                match MyMessage::from(&payload) {
+                    Ok(my_msg) => {
+                        if let Some(client) = msgs.clients.read().await.get(&my_msg.addressee) {
+                            client.chan.send(my_msg.clone()).unwrap();
+                        } else {
+                            eprintln!("Ups, somthing went wrong!");
+                        }
+                    },
+                    Err(_) => {
+                        eprintln!("wrong payload!");
+                    }
+                }
+            }
+        }
+    });
 
-        if let Some(client) = msgs.clients.read().await.get(&msg_to_send.addressee) {
-            client.chan.send(msg_to_send.clone()).unwrap();
-        };
-
-        let msg_received = rx.recv().await.unwrap();
-        socket.send(Message::Text(msg_received.msg)).await.unwrap();
+    tokio::select! {
+        _ = (&mut send_task) => receive_task.abort(),
+        _ = (&mut receive_task) => send_task.abort(),
     }
 }
