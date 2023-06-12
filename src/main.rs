@@ -113,12 +113,13 @@ async fn on_upgrade(socket: WebSocket, msgs: ClientRepo) {
             if let Message::Text(payload) = msg {
                 match MyMessage::from(&payload) {
                     Ok(MyMessage::Msg { msg }) => {
-                        if let Some(client) = msgs.clients.read().await.get(&addressee) {
-                            client.chan.send(
-                                MyMessage::Msg { msg: format!("{addressee}: {msg}") }
-                            ).unwrap();
+                        if let Some(Client { chan }) = msgs.clients.read().await.get(&addressee) {
+                            chan.send(MyMessage::Msg {
+                                msg: format!("{addressee}: {msg}"),
+                            })
+                            .unwrap_or_else(|e| eprintln!("channel send error: {e}"));
                         } else {
-                            eprintln!("Ups, somthing went wrong!");
+                            eprintln!("{addressee} is offline");
                         }
                     }
                     Err(_) => {

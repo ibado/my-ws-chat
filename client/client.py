@@ -1,16 +1,19 @@
-from websocket import create_connection
+from websocket import create_connection, WebSocketConnectionClosedException
 import threading
 import json
 
 
 def write_msg_blocking(ws):
-    userinput = input("<addressee,sender>: ").split(",")
-    init_chat = json.dumps({'addressee': userinput[0], 'sender': userinput[1]})
-    ws.send(init_chat)
-    while True:
-        msg_input = input()
-        message = json.dumps({'msg': msg_input})
-        ws.send(message)
+    try:
+        userinput = input("<addressee,sender>: ").split(",")
+        init_chat = json.dumps({'addressee': userinput[0], 'sender': userinput[1]})
+        ws.send(init_chat)
+        while True:
+            msg_input = input()
+            message = json.dumps({'msg': msg_input})
+            ws.send(message)
+    except WebSocketConnectionClosedException as e:
+        print("Stop sending msgs..." + str(e))
 
 
 def publish_msgs(ws):
@@ -18,8 +21,8 @@ def publish_msgs(ws):
         while True:
             msg = ws.recv()
             print(msg)
-    except:
-        print("Stoping msg publishing...")
+    except WebSocketConnectionClosedException as e:
+        print("Stop receiving msgs..." + str(e))
 
 
 def main():
@@ -35,7 +38,7 @@ def main():
         writing_msgs.join()
         reading_msgs.join()
     except KeyboardInterrupt:
-        print("Closing ws connection...")
+        print("\nClosing ws connection...")
         ws.close()
         print("Done")
 
