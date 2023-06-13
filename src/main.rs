@@ -69,23 +69,24 @@ async fn on_upgrade(socket: WebSocket, msgs: ClientRepo) {
     let (mut sender_sock, mut receiver_sock) = socket.split();
     let (sender_chan, mut receiver_chan) = tokio::sync::mpsc::unbounded_channel::<MyMessage>();
     let mut addressee = String::new();
+    let mut sender = String::new();
     while let Some(Ok(msg)) = receiver_sock.next().await {
         if let Message::Text(p) = msg {
             match MyMessage::from(&p) {
                 Ok(my_message) => {
                     if let MyMessage::InitChat {
-                        sender,
+                        sender: s,
                         addressee: a,
                     } = my_message
                     {
-                        // persist the client sender channel
                         msgs.clients
                             .write()
                             .await
-                            .insert(sender, Client { chan: sender_chan });
-                        // save addressee
+                            .insert(s.clone(), Client { chan: sender_chan });
+
                         addressee.push_str(&a);
-                        // send `you're connected` msg
+                        sender.push_str(&s);
+
                         sender_sock
                             .send(Message::Text("Nice! You're now connected :D".to_string()))
                             .await
@@ -131,6 +132,9 @@ async fn on_upgrade(socket: WebSocket, msgs: ClientRepo) {
                 }
             }
         }
+
+        println!("Closing socket...");
+        msgs.clients.write().await.remove(&sender);
     });
 
     tokio::select! {
