@@ -116,7 +116,7 @@ async fn on_upgrade(socket: WebSocket, msgs: ClientRepo) {
                     Ok(MyMessage::Msg { msg }) => {
                         if let Some(Client { chan }) = msgs.clients.read().await.get(&addressee) {
                             chan.send(MyMessage::Msg {
-                                msg: format!("{addressee}: {msg}"),
+                                msg: format!("{sender}: {msg}"),
                             })
                             .unwrap_or_else(|e| eprintln!("channel send error: {e}"));
                         } else {
