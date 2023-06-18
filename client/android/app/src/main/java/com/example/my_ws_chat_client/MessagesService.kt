@@ -19,7 +19,7 @@ class MessagesService : AutoCloseable {
     private lateinit var client: HttpClient
     private val msgChannel: Channel<String> = Channel()
 
-    suspend fun initChat(onMessage: (Message) -> Unit) {
+    suspend fun initChat(sender: String, addressee: String, onMessage: (Message) -> Unit) {
         client = HttpClient(OkHttp) {
             install(WebSockets)
             engine {
@@ -29,7 +29,7 @@ class MessagesService : AutoCloseable {
             }
         }
 
-        client.webSocket(HttpMethod.Get, "10.0.2.2", 3000, "/messages") {
+        client.webSocket(HttpMethod.Get, HOST, PORT, PATH) {
             val receive = async {
                 while (isActive) {
                     incoming.receive()
@@ -44,7 +44,7 @@ class MessagesService : AutoCloseable {
             }
 
             val send = async {
-                send(Frame.Text("{\"sender\": \"droid\", \"addressee\": \"python\"}"))
+                send(Frame.Text("{\"sender\": \"$sender\", \"addressee\": \"$addressee\"}"))
                 for (message in msgChannel) {
                     send(Frame.Text("{\"msg\": \"$message\"}"))
                     onMessage(Message(message, MsgType.ME))
@@ -66,5 +66,11 @@ class MessagesService : AutoCloseable {
     override fun close() {
         msgChannel.close()
         client.close()
+    }
+
+    companion object {
+        private const val HOST = "10.0.2.2"
+        private const val PORT = 3000
+        private const val PATH = "/messages"
     }
 }
