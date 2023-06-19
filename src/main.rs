@@ -52,7 +52,7 @@ async fn main() {
         .route("/messages", axum::routing::get(messages_handler))
         .with_state(state.clone());
 
-    axum::Server::bind(&"127.0.0.1:3000".parse().unwrap())
+    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())
         .await
         .unwrap();
