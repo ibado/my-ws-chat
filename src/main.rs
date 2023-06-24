@@ -6,7 +6,7 @@ use axum::extract::State;
 use axum::{
     extract::{ws::WebSocket, WebSocketUpgrade},
     response::IntoResponse,
-    Router,
+    Json, Router,
 };
 use futures_util::{sink::SinkExt, stream::StreamExt};
 
@@ -50,6 +50,7 @@ async fn main() {
     let state = ClientRepo::new();
     let app = Router::new()
         .route("/messages", axum::routing::get(messages_handler))
+        .route("/chat", axum::routing::get(chat_handler))
         .with_state(state.clone());
 
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
@@ -58,10 +59,22 @@ async fn main() {
         .unwrap();
 }
 
-async fn messages_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<ClientRepo>,
-) -> impl IntoResponse {
+async fn messages_handler() -> Json<Vec<MyMessage>> {
+    let res = vec![
+        MyMessage::Msg {
+            msg: "message 1".to_string(),
+        },
+        MyMessage::Msg {
+            msg: "message 2".to_string(),
+        },
+        MyMessage::Msg {
+            msg: "message 3".to_string(),
+        },
+    ];
+    Json(res)
+}
+
+async fn chat_handler(ws: WebSocketUpgrade, State(state): State<ClientRepo>) -> impl IntoResponse {
     ws.on_upgrade(|socket| on_upgrade(socket, state))
 }
 

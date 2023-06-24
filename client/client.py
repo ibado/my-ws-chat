@@ -27,7 +27,7 @@ def publish_msgs(ws):
 
 def main():
     print("Creating ws connection...")
-    ws = create_connection("ws://localhost:3000/messages")
+    ws = create_connection("ws://localhost:3000/chat")
     print("Connection established!")
     writing_msgs = threading.Thread(target=write_msg_blocking, args=[ws])
     reading_msgs = threading.Thread(target=publish_msgs, args=[ws])

@@ -94,6 +94,6 @@ class ChatViewModel : ViewModel() {
     companion object {
         private const val HOST = "10.0.2.2"
         private const val PORT = 3000
-        private const val PATH = "/messages"
+        private const val PATH = "/chat"
     }
 }
