@@ -3,9 +3,9 @@ package com.example.my_ws_chat_client
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,34 +24,37 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import com.example.my_ws_chat_client.MessagesService.*
+import androidx.lifecycle.repeatOnLifecycle
+import com.example.my_ws_chat_client.ChatViewModel.*
 import com.example.my_ws_chat_client.ui.theme.MywschatclientTheme
-import kotlinx.coroutines.launch
 
 class ChatActivity : ComponentActivity() {
-
-    private val messages = mutableStateListOf<Message>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val sender = intent.getStringExtra(SENDER_KEY) ?: "droid"
-        val addressee = intent.getStringExtra(ADDRESSEE_KEY) ?: "python"
+        val sender = intent.getStringExtra(SENDER_KEY)!!
+        val addressee = intent.getStringExtra(ADDRESSEE_KEY)!!
 
-        val messagesService = MessagesService()
+        val chatViewModel: ChatViewModel by viewModels()
+        chatViewModel.startChat(sender, addressee)
+
+        val messages = mutableStateListOf<Message>()
 
         lifecycleScope.launchWhenCreated {
-            messagesService.use { service ->
-                service.initChat(sender, addressee) { message ->
-                    Log.i("DROID", "new data: $message")
-                    messages.add(message)
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                chatViewModel.getMessages().collect {
+                    messages.apply {
+                        clear()
+                        addAll(it)
+                    }
                 }
             }
         }
@@ -65,7 +68,7 @@ class ChatActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     ChatView(messages)
-                    MessageBar { lifecycleScope.launch { messagesService.sendMessage(it) } }
+                    MessageBar { chatViewModel.sendMessage(it) }
                 }
             }
         }
@@ -91,7 +94,7 @@ class ChatActivity : ComponentActivity() {
     }
 
     @Composable
-    fun ChatView(messages: SnapshotStateList<Message>, modifier: Modifier = Modifier) =
+    fun ChatView(messages: List<Message>, modifier: Modifier = Modifier) =
         LazyColumn(modifier = modifier, contentPadding = PaddingValues(bottom = 50.dp)) {
             items(messages.size) {
                 val msg = messages[it]
