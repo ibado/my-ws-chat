@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::ws::Message;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::{
     extract::{ws::WebSocket, WebSocketUpgrade},
     response::IntoResponse,
@@ -10,9 +10,12 @@ use axum::{
 };
 use futures_util::{sink::SinkExt, stream::StreamExt};
 
+use crate::messages::MessageRepo;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
+
+mod messages;
 
 #[derive(Clone)]
 struct ClientRepo {
@@ -34,7 +37,7 @@ struct Client {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(untagged)]
-enum MyMessage {
+pub enum MyMessage {
     InitChat { sender: String, addressee: String },
     Msg { msg: String },
 }
@@ -47,11 +50,15 @@ impl MyMessage {
 
 #[tokio::main]
 async fn main() {
-    let state = ClientRepo::new();
+    let client_repo = ClientRepo::new();
+    let message_repo = MessageRepo::new()
+        .await
+        .expect("Error trying to create MessageRepo!");
     let app = Router::new()
         .route("/messages", axum::routing::get(messages_handler))
+        .with_state(message_repo.clone())
         .route("/chat", axum::routing::get(chat_handler))
-        .with_state(state.clone());
+        .with_state(client_repo.clone());
 
     axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
         .serve(app.into_make_service())
@@ -59,18 +66,19 @@ async fn main() {
         .unwrap();
 }
 
-async fn messages_handler() -> Json<Vec<MyMessage>> {
-    let res = vec![
-        MyMessage::Msg {
-            msg: "message 1".to_string(),
-        },
-        MyMessage::Msg {
-            msg: "message 2".to_string(),
-        },
-        MyMessage::Msg {
-            msg: "message 3".to_string(),
-        },
-    ];
+#[derive(Debug, Deserialize)]
+struct Params {
+    sender: String,
+    addressee: String,
+}
+
+async fn messages_handler(
+    State(msgRepo): State<MessageRepo>,
+    params: Query<Params>,
+) -> Json<Vec<MyMessage>> {
+    let res = msgRepo
+        .get_messages(params.0.sender.clone(), params.0.addressee.clone())
+        .await;
     Json(res)
 }
 
