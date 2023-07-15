@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class ChatViewModel : ViewModel() {
@@ -40,7 +41,7 @@ class ChatViewModel : ViewModel() {
         if (isConnected) return
         viewModelScope.launch {
             client.webSocket(HttpMethod.Get, HOST, PORT, PATH) {
-                val receive = async { receiveMessages(this@webSocket) }
+                val receive = async { receiveMessages(this@webSocket, sender) }
                 val send = async { sendMessages(this@webSocket, sender, addressee) }
                 isConnected = true
                 awaitAll(receive, send)
@@ -67,13 +68,18 @@ class ChatViewModel : ViewModel() {
         socket.send(Frame.Text("{\"sender\": \"$sender\", \"addressee\": \"$addressee\"}"))
         for (msgContent in msgChannel) {
             Log.d(javaClass.name, "sending msg...")
-            socket.send(Frame.Text("{\"msg\": \"$msgContent\"}"))
-            val message = Message(msgContent, MsgType.ME)
-            mutableStateFlow.emitNewMsg(message)
+            val json = JSONObject().apply {
+                put("msg", msgContent)
+                put("author", sender)
+            }
+            socket.send(Frame.Text(json.toString()))
         }
     }
 
-    private suspend fun CoroutineScope.receiveMessages(socket: DefaultClientWebSocketSession) {
+    private suspend fun CoroutineScope.receiveMessages(
+        socket: DefaultClientWebSocketSession,
+        sender: String,
+    ) {
         while (isActive) {
             Log.d(javaClass.name, "receiving msg...")
             socket.incoming.receive()
@@ -82,7 +88,11 @@ class ChatViewModel : ViewModel() {
                 ?.decodeToString()
                 ?.let { textFrame ->
                     Log.d(javaClass.name, textFrame)
-                    val message = Message(textFrame, MsgType.OTHER)
+                    val (payload, author) = JSONObject(textFrame).let { json ->
+                        json.get("msg") as String to json.get("author") as String
+                    }
+                    val type = if(author == sender) MsgType.ME else MsgType.OTHER
+                    val message = Message(payload, type)
                     mutableStateFlow.emitNewMsg(message)
                 } ?: Log.w(javaClass.name, "Frame is not Text")
         }
