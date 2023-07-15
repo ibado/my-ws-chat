@@ -4,6 +4,10 @@ WORKDIR /usr/src/my-web-socket-chat
 COPY src src
 COPY Cargo.lock Cargo.lock
 COPY Cargo.toml Cargo.toml
+COPY migrations migrations
+COPY .sqlx .sqlx
+
+ENV SQLX_OFFLINE true
 
 RUN cargo build --release
 
