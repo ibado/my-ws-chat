@@ -16,6 +16,7 @@ impl MessageRepo {
             .connect(&db_url)
             .await
             .ok()?;
+        sqlx::migrate!().run(&pool).await.ok()?;
         Some(Self { db_pool: pool })
     }
 
@@ -28,8 +29,7 @@ impl MessageRepo {
                 addressee,
             )
             .fetch_one(&self.db_pool)
-            .await;
-            Some(())
+            .await.map(|_| ()).ok()
         } else {
             None
         }
