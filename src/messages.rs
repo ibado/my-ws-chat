@@ -1,5 +1,6 @@
 use crate::MyMessage;
 use sqlx::postgres::PgPoolOptions;
+use sqlx::types::time::PrimitiveDateTime;
 use sqlx::PgPool;
 
 #[derive(Clone, Debug)]
@@ -19,7 +20,7 @@ impl MessageRepo {
     }
 
     pub async fn store_msg(&self, msg: MyMessage, sender: String, addressee: String) -> Option<()> {
-        if let MyMessage::Msg { msg: payload } = msg {
+        if let MyMessage::Msg { msg: payload, .. } = msg {
             sqlx::query!(
                 "INSERT INTO messages (payload, sender_id, addressee_id) VALUES ($1, $2, $3);",
                 payload,
@@ -34,7 +35,11 @@ impl MessageRepo {
         }
     }
 
-    pub async fn get_messages(&self, sender: String, addressee: String) -> Vec<MyMessage> {
+    pub async fn get_messages(
+        &self,
+        sender: String,
+        addressee: String,
+    ) -> Vec<(MyMessage, PrimitiveDateTime)> {
         sqlx::query!(
             "SELECT * FROM messages WHERE sender_id = $1 AND addressee_id = $2;",
             sender,
@@ -44,8 +49,14 @@ impl MessageRepo {
         .await
         .unwrap()
         .iter()
-        .map(|r| MyMessage::Msg {
-            msg: r.payload.clone(),
+        .map(|r| {
+            (
+                MyMessage::Msg {
+                    msg: r.payload.clone(),
+                    author: sender.clone(),
+                },
+                r.timestamp,
+            )
         })
         .collect()
     }
