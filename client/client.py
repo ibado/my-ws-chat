@@ -10,7 +10,7 @@ def write_msg_blocking(ws):
         ws.send(init_chat)
         while True:
             msg_input = input()
-            message = json.dumps({'msg': msg_input})
+            message = json.dumps({'msg': msg_input, 'author': userinput[1]})
             ws.send(message)
     except WebSocketConnectionClosedException as e:
         print("Stop sending msgs..." + str(e))
