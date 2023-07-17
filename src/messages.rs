@@ -1,5 +1,4 @@
 use crate::MyMessage;
-use sqlx::postgres::PgPoolOptions;
 use sqlx::types::time::PrimitiveDateTime;
 use sqlx::PgPool;
 
@@ -9,24 +8,17 @@ pub struct MessageRepo {
 }
 
 impl MessageRepo {
-    pub async fn new() -> Option<Self> {
-        let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL env var is missing!");
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .connect(&db_url)
-            .await
-            .ok()?;
-        sqlx::migrate!().run(&pool).await.ok()?;
-        Some(Self { db_pool: pool })
+    pub fn new(pool: &PgPool) -> Self {
+        Self { db_pool: pool.clone() }
     }
 
-    pub async fn store_msg(&self, msg: MyMessage, sender: String, addressee: String) -> Option<()> {
+    pub async fn store_msg(&self, msg: MyMessage, sender: u32, addressee: u32) -> Option<()> {
         if let MyMessage::Msg { msg: payload, .. } = msg {
             sqlx::query!(
                 "INSERT INTO messages (payload, sender_id, addressee_id) VALUES ($1, $2, $3);",
                 payload,
-                sender,
-                addressee,
+                sender as i32,
+                addressee as i32,
             )
             .fetch_one(&self.db_pool)
             .await
@@ -39,8 +31,8 @@ impl MessageRepo {
 
     pub async fn get_messages(
         &self,
-        sender: String,
-        addressee: String,
+        sender: u32,
+        addressee: u32,
     ) -> Vec<(MyMessage, PrimitiveDateTime)> {
         sqlx::query!(
             r#"
@@ -48,8 +40,8 @@ impl MessageRepo {
             WHERE sender_id = $1 AND addressee_id = $2 OR sender_id = $2 AND addressee_id = $1
             ORDER BY timestamp;
             "#,
-            sender,
-            addressee,
+            sender as i32,
+            addressee as i32,
         )
         .fetch_all(&self.db_pool)
         .await
@@ -59,7 +51,7 @@ impl MessageRepo {
             (
                 MyMessage::Msg {
                     msg: r.payload.clone(),
-                    author: r.author.clone(),
+                    author_id: r.author as u32,
                 },
                 r.timestamp,
             )

@@ -6,8 +6,8 @@
     "parameters": {
       "Left": [
         "Text",
-        "Text",
-        "Text"
+        "Int4",
+        "Int4"
       ]
     },
     "nullable": []
