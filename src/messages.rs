@@ -29,7 +29,9 @@ impl MessageRepo {
                 addressee,
             )
             .fetch_one(&self.db_pool)
-            .await.map(|_| ()).ok()
+            .await
+            .map(|_| ())
+            .ok()
         } else {
             None
         }
@@ -41,7 +43,11 @@ impl MessageRepo {
         addressee: String,
     ) -> Vec<(MyMessage, PrimitiveDateTime)> {
         sqlx::query!(
-            "SELECT * FROM messages WHERE sender_id = $1 AND addressee_id = $2;",
+            r#"
+            SELECT payload, sender_id as author, timestamp FROM messages
+            WHERE sender_id = $1 AND addressee_id = $2 OR sender_id = $2 AND addressee_id = $1
+            ORDER BY timestamp;
+            "#,
             sender,
             addressee,
         )
@@ -53,7 +59,7 @@ impl MessageRepo {
             (
                 MyMessage::Msg {
                     msg: r.payload.clone(),
-                    author: sender.clone(),
+                    author: r.author.clone(),
                 },
                 r.timestamp,
             )

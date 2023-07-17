@@ -196,12 +196,7 @@ async fn send_stored_msgs(
     sender: String,
     addressee: String,
 ) {
-    let mut msgs = msg_repo
-        .get_messages(addressee.clone(), sender.clone())
-        .await;
-    let mut sender_msgs = msg_repo.get_messages(sender, addressee).await;
-    msgs.append(&mut sender_msgs);
-    msgs.sort_by(|(_, t1), (_, t2)| t1.partial_cmp(t2).unwrap());
+    let msgs = msg_repo.get_messages(sender, addressee).await;
     for (m, _) in msgs.iter() {
         sender_sock
             .send(Message::Text(m.as_json_str().unwrap()))
