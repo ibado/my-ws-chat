@@ -51,7 +51,7 @@ impl MessageRepo {
             (
                 MyMessage::Msg {
                     msg: r.payload.clone(),
-                    author_id: r.author as u32,
+                    is_sender: r.author == (sender as i32),
                 },
                 r.timestamp,
             )

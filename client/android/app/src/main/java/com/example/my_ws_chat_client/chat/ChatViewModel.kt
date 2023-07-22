@@ -1,8 +1,10 @@
-package com.example.my_ws_chat_client
+package com.example.my_ws_chat_client.chat
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.my_ws_chat_client.Message
+import com.example.my_ws_chat_client.MsgType
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -37,12 +39,14 @@ class ChatViewModel : ViewModel() {
     private val mutableStateFlow = MutableStateFlow(mutableListOf<Message>())
     private var isConnected = false
 
-    fun startChat(sender: String, addressee: String) {
+    fun startChat(jwt: String, addressee: String) {
         if (isConnected) return
         viewModelScope.launch {
-            client.webSocket(HttpMethod.Get, HOST, PORT, PATH) {
-                val receive = async { receiveMessages(this@webSocket, sender) }
-                val send = async { sendMessages(this@webSocket, sender, addressee) }
+            client.webSocket(HttpMethod.Get, HOST, PORT, PATH, request = {
+                this.headers.append("Authorization", "Bearer $jwt")
+            }) {
+                val receive = async { receiveMessages(this@webSocket) }
+                val send = async { sendMessages(this@webSocket, addressee) }
                 isConnected = true
                 awaitAll(receive, send)
             }
@@ -62,15 +66,15 @@ class ChatViewModel : ViewModel() {
 
     private suspend fun sendMessages(
         socket: DefaultClientWebSocketSession,
-        sender: String,
         addressee: String,
     ) {
-        socket.send(Frame.Text("{\"sender\": \"$sender\", \"addressee\": \"$addressee\"}"))
+        val starChatJson = JSONObject().put("addressee_nickname", addressee)
+        socket.send(Frame.Text(starChatJson.toString()))
         for (msgContent in msgChannel) {
             Log.d(javaClass.name, "sending msg...")
             val json = JSONObject().apply {
                 put("msg", msgContent)
-                put("author", sender)
+                put("is_sender", true)
             }
             socket.send(Frame.Text(json.toString()))
         }
@@ -78,7 +82,6 @@ class ChatViewModel : ViewModel() {
 
     private suspend fun CoroutineScope.receiveMessages(
         socket: DefaultClientWebSocketSession,
-        sender: String,
     ) {
         while (isActive) {
             Log.d(javaClass.name, "receiving msg...")
@@ -88,10 +91,10 @@ class ChatViewModel : ViewModel() {
                 ?.decodeToString()
                 ?.let { textFrame ->
                     Log.d(javaClass.name, textFrame)
-                    val (payload, author) = JSONObject(textFrame).let { json ->
-                        json.get("msg") as String to json.get("author") as String
+                    val (payload, isSender) = JSONObject(textFrame).let { json ->
+                        json.get("msg") as String to json.get("is_sender") as Boolean
                     }
-                    val type = if(author == sender) MsgType.ME else MsgType.OTHER
+                    val type = if(isSender) MsgType.ME else MsgType.OTHER
                     val message = Message(payload, type)
                     mutableStateFlow.emitNewMsg(message)
                 } ?: Log.w(javaClass.name, "Frame is not Text")

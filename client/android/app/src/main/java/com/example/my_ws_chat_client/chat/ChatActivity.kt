@@ -1,4 +1,4 @@
-package com.example.my_ws_chat_client
+package com.example.my_ws_chat_client.chat
 
 import android.content.Context
 import android.content.Intent
@@ -32,7 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.example.my_ws_chat_client.ChatViewModel.*
+import com.example.my_ws_chat_client.Message
+import com.example.my_ws_chat_client.MsgType
+import com.example.my_ws_chat_client.chat.ChatViewModel.*
 import com.example.my_ws_chat_client.ui.theme.MywschatclientTheme
 
 class ChatActivity : ComponentActivity() {
@@ -40,11 +42,11 @@ class ChatActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val sender = intent.getStringExtra(SENDER_KEY)!!
+        val senderToken = intent.getStringExtra(SENDER_TOKEN)!!
         val addressee = intent.getStringExtra(ADDRESSEE_KEY)!!
 
         val chatViewModel: ChatViewModel by viewModels()
-        chatViewModel.startChat(sender, addressee)
+        chatViewModel.startChat(senderToken, addressee)
 
         val messages = mutableStateListOf<Message>()
 
@@ -110,13 +112,13 @@ class ChatActivity : ComponentActivity() {
         }
 
     companion object {
-        private const val SENDER_KEY = "sender-key"
+        private const val SENDER_TOKEN = "sender_token"
         private const val ADDRESSEE_KEY = "addressee-key"
 
-        fun intent(from: Context, sender: String, addressee: String): Intent =
+        fun intent(from: Context, jwt: String, addressee: String): Intent =
             Intent(from, ChatActivity::class.java)
                 .apply {
-                    putExtra(SENDER_KEY, sender)
+                    putExtra(SENDER_TOKEN, jwt)
                     putExtra(ADDRESSEE_KEY, addressee)
                 }
     }

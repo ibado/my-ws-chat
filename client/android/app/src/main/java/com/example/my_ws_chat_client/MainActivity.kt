@@ -1,5 +1,7 @@
 package com.example.my_ws_chat_client
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import com.example.my_ws_chat_client.chat.ChatActivity
 import com.example.my_ws_chat_client.ui.theme.MywschatclientTheme
 
 class MainActivity : ComponentActivity() {
@@ -29,6 +32,8 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val jwt = intent.getStringExtra(JWT_KEY)!!
 
         setContent {
             MywschatclientTheme {
@@ -40,7 +45,6 @@ class MainActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        var senderValue by remember { mutableStateOf(TextFieldValue("")) }
                         var addresseeValue by remember { mutableStateOf(TextFieldValue("")) }
                         TextField(
                             value = addresseeValue,
@@ -48,14 +52,8 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxWidth().padding(5.dp),
                             label = { Text(text = "Addressee")},
                         )
-                        TextField(
-                            value = senderValue,
-                            onValueChange = { senderValue = it },
-                            modifier = Modifier.fillMaxWidth().padding(5.dp),
-                            label = { Text(text = "Sender")},
-                        )
                         Button(
-                            onClick = { startChatActivity(senderValue.text, addresseeValue.text)},
+                            onClick = { startChatActivity(jwt, addresseeValue.text)},
                             modifier = Modifier.fillMaxWidth().padding(5.dp),
                         ) {
                             Text(text = "Start Chat")
@@ -66,8 +64,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startChatActivity(sender: String, addressee: String) {
-        val intent = ChatActivity.intent(this@MainActivity, sender, addressee)
+    private fun startChatActivity(jwt: String, addressee: String) {
+        val intent = ChatActivity.intent(this@MainActivity, jwt, addressee)
         startActivity(intent)
+    }
+
+    companion object {
+        private const val JWT_KEY = "jwt_key"
+        fun intent(context: Context, jwt: String): Intent {
+            return Intent(context, MainActivity::class.java).apply {
+                putExtra(JWT_KEY, jwt)
+            }
+        }
     }
 }

@@ -45,7 +45,7 @@ struct Client {
 #[serde(untagged)]
 pub enum MyMessage {
     InitChat { addressee_nickname: String },
-    Msg { msg: String, author_id: u32 },
+    Msg { msg: String, is_sender: bool },
 }
 
 impl MyMessage {
@@ -160,7 +160,6 @@ async fn chat_handler(
 ) -> impl IntoResponse {
     if let Some(h) = headers.get("Authorization") {
         if let Ok(jwt) = h.to_str().map(|h| h.to_string().replace("Bearer ", "")) {
-            println!("jwt: {jwt}");
             let jwt_payload = auth::decode_jwt(jwt).unwrap();
             ws.on_upgrade(|socket| on_upgrade(socket, client_repo, message_repo, user_repo, jwt_payload))
         } else {
@@ -235,8 +234,8 @@ async fn on_upgrade(
                         }
                         MyMessage::Msg { msg, .. } => {
                             store_msg(&msg_repo, sender_id, addressee_id, &msg).await;
-                            send_msg_to(&clients, sender_id, addressee_id, &msg).await;
-                            send_msg_to(&clients, addressee_id, sender_id, &msg).await;
+                            send_msg_to(&clients, sender_id, true, &msg).await;
+                            send_msg_to(&clients, addressee_id, false, &msg).await;
                         }
                     },
                     Err(_) => {
@@ -276,7 +275,7 @@ async fn store_msg(msg_repo: &MessageRepo, sender_id: u32, addressee_id: u32, ms
         .store_msg(
             MyMessage::Msg {
                 msg: msg.to_string(),
-                author_id: sender_id,
+                is_sender: true,
             },
             sender_id,
             addressee_id,
@@ -284,11 +283,11 @@ async fn store_msg(msg_repo: &MessageRepo, sender_id: u32, addressee_id: u32, ms
         .await;
 }
 
-async fn send_msg_to(clients: &ClientRepo, client_key: u32, author_id: u32, msg: &str) {
+async fn send_msg_to(clients: &ClientRepo, client_key: u32, is_sender: bool, msg: &str) {
     if let Some(Client { chan }) = clients.clients.read().await.get(&client_key) {
         chan.send(MyMessage::Msg {
             msg: msg.to_string(),
-            author_id,
+            is_sender,
         })
         .unwrap_or_else(|e| eprintln!("channel send error: {e}"));
     } else {
