@@ -224,7 +224,6 @@ async fn on_upgrade(
                 .await
                 .unwrap();
         }
-        eprintln!("Wrong msg, should be MyMessage::Msg");
     });
 
     let mut receive_task = tokio::spawn(async move {
