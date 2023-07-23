@@ -1,8 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation};
+use bcrypt::{hash, verify, DEFAULT_COST};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use bcrypt::{DEFAULT_COST, hash, verify};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Payload {
@@ -20,10 +20,22 @@ pub fn check_pass(pass: &str, hash: &str) -> bool {
 }
 
 pub fn generate_jwt(user_id: u32, nickname: &str) -> String {
-    let now: usize = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as usize;
+    let now: usize = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as usize;
     let exp = now + 60 * 60 * 24 * 90; // 90 days
-    let payload = Payload { id: user_id, nickname: nickname.to_string(), exp };
-    let jwt = encode(&Header::default(), &payload, &EncodingKey::from_secret("secret".as_ref())).unwrap();
+    let payload = Payload {
+        id: user_id,
+        nickname: nickname.to_string(),
+        exp,
+    };
+    let jwt = encode(
+        &Header::default(),
+        &payload,
+        &EncodingKey::from_secret("secret".as_ref()),
+    )
+    .unwrap();
     jwt.to_string()
 }
 

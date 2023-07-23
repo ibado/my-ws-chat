@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::ws::Message;
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::{
     extract::{ws::WebSocket, WebSocketUpgrade},
@@ -15,13 +15,13 @@ use users::UserRepo;
 
 use crate::messages::MessageRepo;
 use serde::{Deserialize, Serialize};
+use sqlx::postgres::PgPoolOptions;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::RwLock;
-use sqlx::postgres::PgPoolOptions;
 
+mod auth;
 mod messages;
 mod users;
-mod auth;
 
 #[derive(Clone)]
 struct ClientRepo {
@@ -38,21 +38,31 @@ impl ClientRepo {
 
 #[derive(Clone, Debug)]
 struct Client {
-    chan: UnboundedSender<MyMessage>,
+    chan: UnboundedSender<Response>,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
-#[serde(untagged)]
-pub enum MyMessage {
+#[derive(Deserialize, Clone, Debug)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Request {
     InitChat { addressee_nickname: String },
-    Msg { msg: String, is_sender: bool },
+    Msg { msg: String },
 }
 
-impl MyMessage {
+impl Request {
     fn from(str: &str) -> serde_json::Result<Self> {
         serde_json::from_str(str)
     }
+}
 
+#[derive(Serialize, Clone, Debug)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Response {
+    ChatInitSuccess,
+    ChatInitFailure { error: String },
+    Msg { msg: String, is_sender: bool },
+}
+
+impl Response {
     fn as_json_str(&self) -> serde_json::Result<String> {
         serde_json::to_string(self)
     }
@@ -85,7 +95,6 @@ async fn main() {
     };
 
     let app = Router::new()
-        .route("/messages", axum::routing::get(messages_handler))
         .route("/chat", axum::routing::get(chat_handler))
         .route("/signup", axum::routing::post(signup_handler))
         .route("/login", axum::routing::post(login_handler))
@@ -118,7 +127,9 @@ struct UserAuthenticated {
 }
 
 async fn login_handler(State(state): State<MyState>, body: Json<UserReq>) -> impl IntoResponse {
-    if let Some(users::User { id, password_hash }) = state.user_repo.get_by_nickname(&body.nickname).await {
+    if let Some(users::User { id, password_hash }) =
+        state.user_repo.get_by_nickname(&body.nickname).await
+    {
         if auth::check_pass(&body.password, &password_hash) {
             let jwt = auth::generate_jwt(id, &body.nickname);
             Json(UserAuthenticated { jwt }).into_response()
@@ -128,25 +139,6 @@ async fn login_handler(State(state): State<MyState>, body: Json<UserReq>) -> imp
     } else {
         StatusCode::NOT_FOUND.into_response()
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct Params {
-    sender_id: u32,
-    addressee_id: u32,
-}
-
-async fn messages_handler(
-    State(state): State<MyState>,
-    params: Query<Params>,
-) -> Json<Vec<MyMessage>> {
-    let res = state.message_repo
-        .get_messages(params.0.sender_id, params.0.addressee_id)
-        .await
-        .into_iter()
-        .map(|(m, _)| m)
-        .collect();
-    Json(res)
 }
 
 async fn chat_handler(
@@ -161,7 +153,9 @@ async fn chat_handler(
     if let Some(h) = headers.get("Authorization") {
         if let Ok(jwt) = h.to_str().map(|h| h.to_string().replace("Bearer ", "")) {
             let jwt_payload = auth::decode_jwt(jwt).unwrap();
-            ws.on_upgrade(|socket| on_upgrade(socket, client_repo, message_repo, user_repo, jwt_payload))
+            ws.on_upgrade(|socket| {
+                on_upgrade(socket, client_repo, message_repo, user_repo, jwt_payload)
+            })
         } else {
             StatusCode::UNAUTHORIZED.into_response()
         }
@@ -178,21 +172,26 @@ async fn on_upgrade(
     jwt_payload: auth::Payload,
 ) {
     let (mut sender_sock, mut receiver_sock) = socket.split();
-    let (sender_chan, mut receiver_chan) = tokio::sync::mpsc::unbounded_channel::<MyMessage>();
+    let (sender_chan, mut receiver_chan) = tokio::sync::mpsc::unbounded_channel::<Response>();
 
     let mut addressee_id: u32 = 0;
     let sender_id: u32 = jwt_payload.id;
     while let Some(Ok(msg)) = receiver_sock.next().await {
         if let Message::Text(p) = msg {
-            match MyMessage::from(&p) {
+            match Request::from(&p) {
                 Ok(my_message) => {
-                    if let MyMessage::InitChat {
-                        addressee_nickname,
-                    } = my_message
-                    {
-                        addressee_id = if let Some(user) = user_repo.get_by_nickname(&addressee_nickname).await {
+                    if let Request::InitChat { addressee_nickname } = my_message {
+                        addressee_id = if let Some(user) =
+                            user_repo.get_by_nickname(&addressee_nickname).await
+                        {
                             user.id
                         } else {
+                            let failure_msg = Response::ChatInitFailure {
+                                error: "Addressee not found!".to_string(),
+                            }
+                            .as_json_str()
+                            .unwrap();
+                            sender_sock.send(Message::Text(failure_msg)).await.unwrap();
                             break;
                         };
                         clients
@@ -201,7 +200,11 @@ async fn on_upgrade(
                             .await
                             .insert(sender_id, Client { chan: sender_chan });
 
-                        send_stored_msgs(&msg_repo, &mut sender_sock, sender_id, addressee_id).await;
+                        let success_msg = Response::ChatInitSuccess.as_json_str().unwrap();
+                        sender_sock.send(Message::Text(success_msg)).await.unwrap();
+
+                        send_stored_msgs(&msg_repo, &mut sender_sock, sender_id, addressee_id)
+                            .await;
 
                         break;
                     }
@@ -227,15 +230,17 @@ async fn on_upgrade(
     let mut receive_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver_sock.next().await {
             if let Message::Text(payload) = msg {
-                match MyMessage::from(&payload) {
+                match Request::from(&payload) {
                     Ok(my_msg) => match my_msg {
-                        MyMessage::InitChat { .. } => {
-                            eprintln!("wrong msg here. (should be MyMessage::Msg)!");
+                        Request::Msg { msg, .. } => {
+                            tokio::join!(
+                                store_msg(&msg_repo, sender_id, addressee_id, &msg),
+                                send_msg_to(&clients, sender_id, true, &msg),
+                                send_msg_to(&clients, addressee_id, false, &msg)
+                            );
                         }
-                        MyMessage::Msg { msg, .. } => {
-                            store_msg(&msg_repo, sender_id, addressee_id, &msg).await;
-                            send_msg_to(&clients, sender_id, true, &msg).await;
-                            send_msg_to(&clients, addressee_id, false, &msg).await;
+                        _ => {
+                            eprintln!("wrong msg here. (should be MyMessage::Msg)!");
                         }
                     },
                     Err(_) => {
@@ -262,9 +267,13 @@ async fn send_stored_msgs(
     addressee_id: u32,
 ) {
     let msgs = msg_repo.get_messages(sender_id, addressee_id).await;
-    for (m, _) in msgs.iter() {
+    for m in msgs.iter() {
+        let res = Response::Msg {
+            msg: m.payload.clone(),
+            is_sender: m.is_sender,
+        };
         sender_sock
-            .send(Message::Text(m.as_json_str().unwrap()))
+            .send(Message::Text(res.as_json_str().unwrap()))
             .await
             .unwrap();
     }
@@ -272,20 +281,13 @@ async fn send_stored_msgs(
 
 async fn store_msg(msg_repo: &MessageRepo, sender_id: u32, addressee_id: u32, msg: &str) {
     msg_repo
-        .store_msg(
-            MyMessage::Msg {
-                msg: msg.to_string(),
-                is_sender: true,
-            },
-            sender_id,
-            addressee_id,
-        )
+        .store_msg(msg.to_string(), sender_id, addressee_id)
         .await;
 }
 
 async fn send_msg_to(clients: &ClientRepo, client_key: u32, is_sender: bool, msg: &str) {
     if let Some(Client { chan }) = clients.clients.read().await.get(&client_key) {
-        chan.send(MyMessage::Msg {
+        chan.send(Response::Msg {
             msg: msg.to_string(),
             is_sender,
         })

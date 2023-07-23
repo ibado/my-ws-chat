@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT payload, sender_id as author FROM messages\n            WHERE sender_id = $1 AND addressee_id = $2 OR sender_id = $2 AND addressee_id = $1\n            ORDER BY timestamp;\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "payload",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "author",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "c12c5947538b9a3e0d81ea2a75839a1df667736e658e4f8417630d7e66790e54"
+}
