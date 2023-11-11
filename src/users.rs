@@ -1,3 +1,4 @@
+use crate::types::Result;
 use sqlx::PgPool;
 
 #[derive(Clone, Debug)]
@@ -17,7 +18,7 @@ impl UserRepo {
         }
     }
 
-    pub async fn store(&self, nickname: String, password_hash: String) -> Option<()> {
+    pub async fn store(&self, nickname: String, password_hash: String) -> Result<()> {
         sqlx::query!(
             "INSERT INTO users (nickname, password_hash) VALUES ($1, $2);",
             nickname,
@@ -25,21 +26,24 @@ impl UserRepo {
         )
         .execute(&self.db_pool)
         .await
-        .ok()
+        .map_err(|e| eprintln!("Error inserting user: {e}"))
         .map(|_| ())
     }
 
-    pub async fn get_by_nickname(&self, nickname: &str) -> Option<User> {
-        sqlx::query!(
+    pub async fn get_by_nickname(&self, nickname: &str) -> Result<Option<User>> {
+        match sqlx::query!(
             "SELECT id, password_hash FROM users WHERE nickname = $1",
             nickname,
         )
         .fetch_one(&self.db_pool)
         .await
-        .map(|r| User {
-            id: r.id as u32,
-            password_hash: r.password_hash,
-        })
-        .ok()
+        {
+            Ok(r) => Ok(Some(User {
+                id: r.id as u32,
+                password_hash: r.password_hash,
+            })),
+            Err(sqlx::Error::RowNotFound) => Ok(None),
+            Err(e) => Err(eprintln!("Error fetching user: {e}")),
+        }
     }
 }

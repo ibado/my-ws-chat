@@ -1,8 +1,8 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use bcrypt::{hash, verify, DEFAULT_COST};
+use crate::types::Result;
+use bcrypt::DEFAULT_COST;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Payload {
@@ -11,18 +11,18 @@ pub struct Payload {
     pub exp: usize,
 }
 
-pub fn hash_pass(pass: &str) -> String {
-    hash(pass, DEFAULT_COST).unwrap()
+pub fn hash_pass(pass: &str) -> Result<String> {
+    bcrypt::hash(pass, DEFAULT_COST).map_err(|e| eprintln!("Error hashing password: {e}"))
 }
 
-pub fn check_pass(pass: &str, hash: &str) -> bool {
-    verify(pass, hash).unwrap()
+pub fn check_pass(pass: &str, hash: &str) -> Result<bool> {
+    bcrypt::verify(pass, hash).map_err(|e| eprintln!("Error verifying password: {e}"))
 }
 
-pub fn generate_jwt(user_id: u32, nickname: &str) -> String {
+pub fn generate_jwt(user_id: u32, nickname: &str) -> Result<String> {
     let now: usize = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .map_err(|e| eprintln!("Error getting the system time: {e}"))?
         .as_secs() as usize;
     let exp = now + 60 * 60 * 24 * 90; // 90 days
     let payload = Payload {
@@ -30,19 +30,21 @@ pub fn generate_jwt(user_id: u32, nickname: &str) -> String {
         nickname: nickname.to_string(),
         exp,
     };
+
     let jwt = encode(
         &Header::default(),
         &payload,
         &EncodingKey::from_secret("secret".as_ref()),
     )
-    .unwrap();
-    jwt.to_string()
+    .map_err(|e| eprintln!("Error encoding jwt: {e}"))?;
+
+    Ok(jwt.to_string())
 }
 
-pub fn decode_jwt(token: String) -> Option<Payload> {
+pub fn decode_jwt(token: String) -> Result<Payload> {
     let dk = DecodingKey::from_secret("secret".as_ref());
     let v = Validation::default();
     decode::<Payload>(&token, &dk, &v)
-        .ok()
+        .map_err(|e| eprintln!("Error decoding jwt: {e}"))
         .map(|data| data.claims)
 }

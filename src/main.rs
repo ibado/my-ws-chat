@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::ws::Message;
-use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
 use axum::{
-    extract::{ws::WebSocket, WebSocketUpgrade},
+    extract::{
+        ws::{Message, WebSocket},
+        State, WebSocketUpgrade,
+    },
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json, Router,
 };
@@ -21,7 +22,10 @@ use tokio::sync::RwLock;
 
 mod auth;
 mod messages;
+mod types;
 mod users;
+
+type AxumResponse = axum::response::Result<axum::response::Response>;
 
 #[derive(Clone)]
 struct ClientRepo {
@@ -112,13 +116,10 @@ struct UserReq {
     password: String,
 }
 
-async fn signup_handler(State(state): State<MyState>, body: Json<UserReq>) -> impl IntoResponse {
-    let pass = auth::hash_pass(&body.password);
-    if let Some(_) = state.user_repo.store(body.nickname.clone(), pass).await {
-        StatusCode::CREATED.into_response()
-    } else {
-        StatusCode::BAD_REQUEST.into_response()
-    }
+async fn signup_handler(State(state): State<MyState>, body: Json<UserReq>) -> AxumResponse {
+    let pass = auth::hash_pass(&body.password)?;
+    state.user_repo.store(body.nickname.clone(), pass).await?;
+    Ok(StatusCode::CREATED.into_response())
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -126,19 +127,20 @@ struct UserAuthenticated {
     jwt: String,
 }
 
-async fn login_handler(State(state): State<MyState>, body: Json<UserReq>) -> impl IntoResponse {
-    if let Some(users::User { id, password_hash }) =
-        state.user_repo.get_by_nickname(&body.nickname).await
-    {
-        if auth::check_pass(&body.password, &password_hash) {
-            let jwt = auth::generate_jwt(id, &body.nickname);
+async fn login_handler(State(state): State<MyState>, body: Json<UserReq>) -> AxumResponse {
+    let user_opt = state.user_repo.get_by_nickname(&body.nickname).await?;
+    let res = if let Some(users::User { id, password_hash }) = user_opt {
+        if auth::check_pass(&body.password, &password_hash)? {
+            let jwt = auth::generate_jwt(id, &body.nickname)?;
             Json(UserAuthenticated { jwt }).into_response()
         } else {
-            StatusCode::BAD_REQUEST.into_response()
+            StatusCode::UNAUTHORIZED.into_response()
         }
     } else {
         StatusCode::NOT_FOUND.into_response()
-    }
+    };
+
+    Ok(res)
 }
 
 async fn chat_handler(
@@ -181,7 +183,7 @@ async fn on_upgrade(
             match Request::from(&p) {
                 Ok(my_message) => {
                     if let Request::InitChat { addressee_nickname } = my_message {
-                        addressee_id = if let Some(user) =
+                        addressee_id = if let Ok(Some(user)) =
                             user_repo.get_by_nickname(&addressee_nickname).await
                         {
                             user.id
