@@ -17,8 +17,10 @@ use users::UserRepo;
 use crate::messages::MessageRepo;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
-use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::RwLock;
+use tokio::sync::{
+    mpsc::{unbounded_channel, UnboundedSender},
+    RwLock,
+};
 
 mod auth;
 mod messages;
@@ -79,6 +81,17 @@ struct MyState {
     user_repo: UserRepo,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+struct UserReq {
+    nickname: String,
+    password: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct UserAuthenticated {
+    jwt: String,
+}
+
 #[tokio::main]
 async fn main() {
     let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL env var is missing!");
@@ -110,21 +123,10 @@ async fn main() {
         .unwrap();
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct UserReq {
-    nickname: String,
-    password: String,
-}
-
 async fn signup_handler(State(state): State<MyState>, body: Json<UserReq>) -> AxumResponse {
     let pass = auth::hash_pass(&body.password)?;
     state.user_repo.store(body.nickname.clone(), pass).await?;
     Ok(StatusCode::CREATED.into_response())
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct UserAuthenticated {
-    jwt: String,
 }
 
 async fn login_handler(State(state): State<MyState>, body: Json<UserReq>) -> AxumResponse {
@@ -152,17 +154,20 @@ async fn chat_handler(
     }): State<MyState>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
-    if let Some(h) = headers.get("Authorization") {
-        if let Ok(jwt) = h.to_str().map(|h| h.to_string().replace("Bearer ", "")) {
-            let jwt_payload = auth::decode_jwt(jwt).unwrap();
-            ws.on_upgrade(|socket| {
-                on_upgrade(socket, client_repo, message_repo, user_repo, jwt_payload)
-            })
-        } else {
-            StatusCode::UNAUTHORIZED.into_response()
-        }
-    } else {
-        StatusCode::UNAUTHORIZED.into_response()
+    match headers
+        .get("Authorization")
+        .ok_or(eprintln!("Missing authorization header."))
+        .and_then(|header| {
+            header.to_str()
+                .map(|h| h.to_string().replace("Bearer ", ""))
+                .map_err(|e| eprintln!("Error parsing authorization header: {e}"))
+        })
+        .and_then(|token| auth::decode_jwt(token))
+    {
+        Ok(jwt_payload) => ws.on_upgrade(|socket| {
+            on_upgrade(socket, client_repo, message_repo, user_repo, jwt_payload)
+        }),
+        Err(_) => StatusCode::UNAUTHORIZED.into_response(),
     }
 }
 
@@ -174,7 +179,7 @@ async fn on_upgrade(
     jwt_payload: auth::Payload,
 ) {
     let (mut sender_sock, mut receiver_sock) = socket.split();
-    let (sender_chan, mut receiver_chan) = tokio::sync::mpsc::unbounded_channel::<Response>();
+    let (sender_chan, mut receiver_chan) = unbounded_channel::<Response>();
 
     let mut addressee_id: u32 = 0;
     let sender_id: u32 = jwt_payload.id;
