@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, error::Error, sync::Arc};
 
 use axum::{
     extract::{
@@ -93,14 +92,13 @@ struct UserAuthenticated {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error>> {
     let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL env var is missing!");
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&db_url)
-        .await
-        .unwrap();
-    sqlx::migrate!().run(&pool).await.unwrap();
+        .await?;
+    sqlx::migrate!().run(&pool).await?;
 
     let message_repo = MessageRepo::new(&pool);
     let user_repo = UserRepo::new(&pool);
@@ -117,10 +115,11 @@ async fn main() {
         .route("/login", axum::routing::post(login_handler))
         .with_state(state.clone());
 
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+    axum::Server::bind(&"0.0.0.0:3000".parse()?)
         .serve(app.into_make_service())
-        .await
-        .unwrap();
+        .await?;
+
+    Ok(())
 }
 
 async fn signup_handler(State(state): State<MyState>, body: Json<UserReq>) -> AxumResponse {
@@ -158,7 +157,8 @@ async fn chat_handler(
         .get("Authorization")
         .ok_or(eprintln!("Missing authorization header."))
         .and_then(|header| {
-            header.to_str()
+            header
+                .to_str()
                 .map(|h| h.to_string().replace("Bearer ", ""))
                 .map_err(|e| eprintln!("Error parsing authorization header: {e}"))
         })
