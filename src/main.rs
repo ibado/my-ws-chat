@@ -155,7 +155,7 @@ async fn chat_handler(
 ) -> impl IntoResponse {
     match headers
         .get("Authorization")
-        .ok_or(eprintln!("Missing authorization header."))
+        .ok_or_else(|| eprintln!("Missing authorization header."))
         .and_then(|header| {
             header
                 .to_str()
@@ -226,10 +226,14 @@ async fn on_upgrade(
 
     let mut send_task = tokio::spawn(async move {
         while let Some(msg) = receiver_chan.recv().await {
-            let _ = sender_sock
-                .send(Message::Text(msg.as_json_str().unwrap()))
-                .await
-                .unwrap();
+            match msg.as_json_str() {
+                Ok(json) => {
+                    if let Err(e) = sender_sock.send(Message::Text(json)).await {
+                        eprintln!("Error sending message: {e}");
+                    }
+                }
+                Err(e) => eprintln!("Error parsing message from clinet: {e}"),
+            }
         }
     });
 
