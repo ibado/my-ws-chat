@@ -30,6 +30,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.example.my_ws_chat_client.MainActivity
+import com.example.my_ws_chat_client.login.LoginViewModel.LoginResult
+import com.example.my_ws_chat_client.showToast
 import com.example.my_ws_chat_client.ui.theme.MywschatclientTheme
 
 
@@ -49,29 +51,23 @@ class LoginActivity : ComponentActivity() {
         }
 
         fun login(nickname: String, password: String) = lifecycleScope.launchWhenStarted {
-            viewModel.login(nickname, password).getOrNull()
-                ?.let { jwt ->
+            when (val result = viewModel.login(nickname, password)) {
+                is LoginResult.Failure -> showToast(result.message)
+
+                is LoginResult.Success -> {
                     sharedPreferences().edit()
-                        .putString("jwt", jwt)
+                        .putString("jwt", result.jwt)
                         .apply()
-                    startMainActivity(jwt)
+                    startMainActivity(result.jwt)
                 }
-                ?: Toast.makeText(
-                    this@LoginActivity,
-                    "Error trying to login!",
-                    Toast.LENGTH_SHORT
-                ).show()
+            }
         }
 
         fun register(nickname: String, password: String) = lifecycleScope.launchWhenStarted {
             if (viewModel.register(nickname, password)) {
                 login(nickname, password)
             } else {
-                Toast.makeText(
-                    this@LoginActivity,
-                    "Error trying to create account!",
-                    Toast.LENGTH_SHORT
-                ).show()
+                showToast("Error trying to create account!")
             }
         }
 
@@ -110,7 +106,8 @@ class LoginActivity : ComponentActivity() {
                             onClick = { register(nicknameValue.text, passwordValue.text) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(5.dp).padding(top = 16.dp),
+                                .padding(5.dp)
+                                .padding(top = 16.dp),
                         ) {
                             Text(text = "Register")
                         }

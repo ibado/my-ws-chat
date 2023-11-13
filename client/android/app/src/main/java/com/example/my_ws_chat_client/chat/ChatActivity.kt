@@ -3,7 +3,6 @@ package com.example.my_ws_chat_client.chat
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -36,6 +35,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.example.my_ws_chat_client.Message
 import com.example.my_ws_chat_client.MsgType
 import com.example.my_ws_chat_client.chat.ChatViewModel.*
+import com.example.my_ws_chat_client.showToast
 import com.example.my_ws_chat_client.ui.theme.MywschatclientTheme
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -65,8 +65,8 @@ class ChatActivity : ComponentActivity() {
                 }
                 val getError = async {
                     chatViewModel.getError().collect {
-                        it?.let {
-                            Toast.makeText(this@ChatActivity, it, Toast.LENGTH_SHORT).show()
+                        it?.let { errorMsg ->
+                            showToast(errorMsg)
                             finish()
                         }
                     }
