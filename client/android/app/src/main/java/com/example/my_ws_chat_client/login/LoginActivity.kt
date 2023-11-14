@@ -2,7 +2,6 @@ package com.example.my_ws_chat_client.login
 
 import android.content.SharedPreferences
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -33,6 +32,13 @@ import com.example.my_ws_chat_client.MainActivity
 import com.example.my_ws_chat_client.login.LoginViewModel.LoginResult
 import com.example.my_ws_chat_client.showToast
 import com.example.my_ws_chat_client.ui.theme.MywschatclientTheme
+import okio.ByteString.Companion.decodeBase64
+import org.json.JSONObject
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 
 class LoginActivity : ComponentActivity() {
@@ -45,8 +51,12 @@ class LoginActivity : ComponentActivity() {
 
         sharedPreferences().let { sharedPreferences ->
             val jwt: String? = sharedPreferences.getString("jwt", null)
-            if (jwt != null) {
+            if (jwt != null && !jwt.isExpired()) {
                 startMainActivity(jwt)
+            } else {
+                sharedPreferences.edit()
+                    .remove("jwt")
+                    .apply()
             }
         }
 
@@ -138,6 +148,19 @@ class LoginActivity : ComponentActivity() {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
     }
+
+    private fun String.isExpired(): Boolean =
+        split(".")[1]
+            .decodeBase64()?.utf8()
+            ?.let(::JSONObject)
+            ?.getString("exp")
+            ?.let { Instant.ofEpochSecond(it.toLong()) }
+            ?.let { exp ->
+                val expDay = LocalDateTime.ofInstant(exp, ZoneId.of("UTC"))
+                val today = LocalDateTime.now().atZone(ZoneId.of("UTC"))
+                expDay <= today.toLocalDateTime()
+            } ?: false
+
 
     private fun startMainActivity(jwt: String) {
         val intent = MainActivity.intent(this, jwt)
