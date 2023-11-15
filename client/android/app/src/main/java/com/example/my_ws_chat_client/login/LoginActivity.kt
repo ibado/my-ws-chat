@@ -1,6 +1,5 @@
 package com.example.my_ws_chat_client.login
 
-import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,17 +25,14 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import com.example.my_ws_chat_client.MainActivity
 import com.example.my_ws_chat_client.login.LoginViewModel.LoginResult
+import com.example.my_ws_chat_client.sharedPreferences
 import com.example.my_ws_chat_client.showToast
 import com.example.my_ws_chat_client.ui.theme.MywschatclientTheme
 import okio.ByteString.Companion.decodeBase64
 import org.json.JSONObject
-import java.time.DayOfWeek
 import java.time.Instant
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -133,20 +129,6 @@ class LoginActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    private fun sharedPreferences(): SharedPreferences {
-        val masterKey: MasterKey = MasterKey.Builder(applicationContext)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-
-        return EncryptedSharedPreferences.create(
-            applicationContext,
-            "secret_shared_prefs",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
     }
 
     private fun String.isExpired(): Boolean =

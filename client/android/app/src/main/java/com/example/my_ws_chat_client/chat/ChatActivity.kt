@@ -32,9 +32,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.example.my_ws_chat_client.MainActivity.Companion.RECENT_CHATS
 import com.example.my_ws_chat_client.Message
 import com.example.my_ws_chat_client.MsgType
 import com.example.my_ws_chat_client.chat.ChatViewModel.*
+import com.example.my_ws_chat_client.sharedPreferences
 import com.example.my_ws_chat_client.showToast
 import com.example.my_ws_chat_client.ui.theme.MywschatclientTheme
 import kotlinx.coroutines.async
@@ -57,6 +59,11 @@ class ChatActivity : ComponentActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 val getMessages = async {
                     chatViewModel.getMessages().collect {
+                        sharedPreferences().apply {
+                            getStringSet(RECENT_CHATS, emptySet())?.let {
+                                edit().putStringSet(RECENT_CHATS, it.plus(addressee)).apply()
+                            }
+                        }
                         messages.apply {
                             clear()
                             addAll(it)

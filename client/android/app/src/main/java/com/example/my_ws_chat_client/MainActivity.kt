@@ -1,15 +1,19 @@
 package com.example.my_ws_chat_client
 
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -17,19 +21,28 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.my_ws_chat_client.chat.ChatActivity
 import com.example.my_ws_chat_client.ui.theme.MywschatclientTheme
 
 class MainActivity : ComponentActivity() {
 
-    @OptIn(ExperimentalMaterial3Api::class)
+    private val recentChats: SnapshotStateList<String> = mutableStateListOf()
+
+    @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -38,7 +51,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             MywschatclientTheme {
                 Surface(
-                    modifier = Modifier.fillMaxSize().padding(10.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(10.dp),
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     Column(
@@ -49,18 +64,89 @@ class MainActivity : ComponentActivity() {
                         TextField(
                             value = addresseeValue,
                             onValueChange = { addresseeValue = it },
-                            modifier = Modifier.fillMaxWidth().padding(5.dp),
-                            label = { Text(text = "Addressee")},
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(5.dp),
+                            label = { Text(text = "Addressee nickname")},
                         )
                         Button(
                             onClick = { startChatActivity(jwt, addresseeValue.text)},
-                            modifier = Modifier.fillMaxWidth().padding(5.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(5.dp),
                         ) {
                             Text(text = "Start Chat")
+                        }
+                        if (recentChats.isNotEmpty()) {
+                            LazyColumn(
+                                Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                item { Text(text = "Recent chats", Modifier.padding(10.dp)) }
+                                items(recentChats.size) { idx ->
+                                    Text(
+                                        style = TextStyle(
+                                            textAlign = TextAlign.Center,
+                                            fontSize = 16.sp,
+                                            color = Color.DarkGray
+                                        ),
+                                        modifier = Modifier
+                                            .combinedClickable(
+                                                onClick = {
+                                                    startChatActivity(
+                                                        jwt,
+                                                        recentChats[idx]
+                                                    )
+                                                },
+                                                onLongClick = {
+                                                    val addressee = recentChats[idx]
+                                                    AlertDialog.Builder(this@MainActivity)
+                                                        .setTitle("Hello :D")
+                                                        .setMessage("You want to delete $addressee from recent chats?")
+                                                        .setPositiveButton("Delete"
+                                                        ) { _, _ -> removeAddressee(addressee) }
+                                                        .show()
+
+                                                }
+                                            )
+                                            .fillMaxWidth()
+                                            .padding(10.dp),
+                                        text = AnnotatedString(recentChats[idx]),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        recentChats.clear()
+        sharedPreferences()
+            .getStringSet(RECENT_CHATS, null)
+            .orEmpty()
+            .let(recentChats::addAll)
+
+    }
+
+    private fun removeAddressee(addressee: String) {
+        sharedPreferences().apply {
+            getStringSet(
+                RECENT_CHATS,
+                emptySet()
+            )
+                ?.minus(addressee)
+                ?.let { newSet ->
+                    edit().putStringSet(
+                        RECENT_CHATS,
+                        newSet
+                    ).apply()
+                    recentChats.clear()
+                    recentChats.addAll(newSet)
+                }
         }
     }
 
@@ -71,6 +157,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val JWT_KEY = "jwt_key"
+        const val RECENT_CHATS = "recent-chats"
         fun intent(context: Context, jwt: String): Intent {
             return Intent(context, MainActivity::class.java).apply {
                 putExtra(JWT_KEY, jwt)
