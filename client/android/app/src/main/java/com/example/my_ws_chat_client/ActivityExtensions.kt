@@ -22,3 +22,30 @@ fun ComponentActivity.sharedPreferences(): SharedPreferences {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 }
+
+private const val RECENT_CHATS = "recent-chats"
+
+fun ComponentActivity.saveRecentChat(addressee: String): Unit =
+    sharedPreferences()
+        .let { preferences ->
+            val recentChats = preferences.getStringSet(RECENT_CHATS, null).orEmpty()
+            preferences.edit()
+                .putStringSet(RECENT_CHATS, recentChats.plus(addressee))
+                .apply()
+        }
+
+fun ComponentActivity.removeAddresseeFromRecentChats(addressee: String): Unit =
+    sharedPreferences().let { preferences ->
+        preferences.getStringSet(RECENT_CHATS, null)
+            ?.minus(addressee)
+            ?.let { newSet ->
+                preferences.edit().putStringSet(
+                    RECENT_CHATS,
+                    newSet
+                ).apply()
+            }
+    }
+
+fun ComponentActivity.getRecentChats() = sharedPreferences()
+    .getStringSet(RECENT_CHATS, null)
+    .orEmpty()

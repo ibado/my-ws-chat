@@ -125,29 +125,12 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         recentChats.clear()
-        sharedPreferences()
-            .getStringSet(RECENT_CHATS, null)
-            .orEmpty()
-            .let(recentChats::addAll)
-
+        recentChats.addAll(getRecentChats())
     }
 
     private fun removeAddressee(addressee: String) {
-        sharedPreferences().apply {
-            getStringSet(
-                RECENT_CHATS,
-                emptySet()
-            )
-                ?.minus(addressee)
-                ?.let { newSet ->
-                    edit().putStringSet(
-                        RECENT_CHATS,
-                        newSet
-                    ).apply()
-                    recentChats.clear()
-                    recentChats.addAll(newSet)
-                }
-        }
+        removeAddresseeFromRecentChats(addressee)
+        recentChats.remove(addressee)
     }
 
     private fun startChatActivity(jwt: String, addressee: String) {
@@ -157,7 +140,6 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val JWT_KEY = "jwt_key"
-        const val RECENT_CHATS = "recent-chats"
         fun intent(context: Context, jwt: String): Intent {
             return Intent(context, MainActivity::class.java).apply {
                 putExtra(JWT_KEY, jwt)
