@@ -1,4 +1,5 @@
 use crate::types::Result;
+use axum::http::HeaderMap;
 use bcrypt::DEFAULT_COST;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
@@ -47,4 +48,17 @@ pub fn decode_jwt(token: String) -> Result<Payload> {
     decode::<Payload>(&token, &dk, &v)
         .map_err(|e| eprintln!("Error decoding jwt: {e}"))
         .map(|data| data.claims)
+}
+
+pub fn extract_jwt(headers: HeaderMap) -> Result<Payload> {
+    headers
+        .get("Authorization")
+        .ok_or_else(|| eprintln!("Missing authorization header."))
+        .and_then(|header| {
+            header
+                .to_str()
+                .map(|h| h.to_string().replace("Bearer ", ""))
+                .map_err(|e| eprintln!("Error parsing authorization header: {e}"))
+        })
+        .and_then(|token| crate::auth::decode_jwt(token))
 }

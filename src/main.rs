@@ -1,5 +1,4 @@
-use std::{collections::HashMap, error::Error, sync::Arc};
-
+use auth::extract_jwt;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -9,11 +8,18 @@ use axum::{
     response::IntoResponse,
     Json, Router,
 };
-use futures_util::stream::SplitSink;
-use futures_util::{sink::SinkExt, stream::StreamExt};
+use futures_util::{
+    sink::SinkExt,
+    stream::{SplitSink, StreamExt},
+};
+use notifications::NotificationRepo;
+use std::{collections::HashMap, error::Error, sync::Arc};
 use users::UserRepo;
 
-use crate::messages::MessageRepo;
+use crate::{
+    messages::MessageRepo,
+    notifications::{notifications_handler, Notification},
+};
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::{
@@ -23,6 +29,7 @@ use tokio::sync::{
 
 mod auth;
 mod messages;
+mod notifications;
 mod types;
 mod users;
 
@@ -74,10 +81,11 @@ impl Response {
 }
 
 #[derive(Clone)]
-struct MyState {
+pub struct MyState {
     client_repo: ClientRepo,
     message_repo: MessageRepo,
     user_repo: UserRepo,
+    notification_repo: notifications::NotificationRepo,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -107,12 +115,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         client_repo: ClientRepo::new(),
         message_repo,
         user_repo,
+        notification_repo: notifications::NotificationRepo::new(),
     };
 
     let app = Router::new()
         .route("/chat", axum::routing::get(chat_handler))
         .route("/signup", axum::routing::post(signup_handler))
         .route("/login", axum::routing::post(login_handler))
+        .route("/notifications", axum::routing::get(notifications_handler))
         .with_state(state.clone());
 
     axum::Server::bind(&"0.0.0.0:3000".parse()?)
@@ -150,22 +160,20 @@ async fn chat_handler(
         message_repo,
         client_repo,
         user_repo,
+        notification_repo,
     }): State<MyState>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
-    match headers
-        .get("Authorization")
-        .ok_or_else(|| eprintln!("Missing authorization header."))
-        .and_then(|header| {
-            header
-                .to_str()
-                .map(|h| h.to_string().replace("Bearer ", ""))
-                .map_err(|e| eprintln!("Error parsing authorization header: {e}"))
-        })
-        .and_then(|token| auth::decode_jwt(token))
-    {
+    match extract_jwt(headers) {
         Ok(jwt_payload) => ws.on_upgrade(|socket| {
-            on_upgrade(socket, client_repo, message_repo, user_repo, jwt_payload)
+            on_upgrade(
+                socket,
+                client_repo,
+                message_repo,
+                user_repo,
+                notification_repo,
+                jwt_payload,
+            )
         }),
         Err(_) => StatusCode::UNAUTHORIZED.into_response(),
     }
@@ -176,6 +184,7 @@ async fn on_upgrade(
     clients: ClientRepo,
     msg_repo: MessageRepo,
     user_repo: UserRepo,
+    notification_repo: NotificationRepo,
     jwt_payload: auth::Payload,
 ) {
     let (mut sender_sock, mut receiver_sock) = socket.split();
@@ -183,11 +192,21 @@ async fn on_upgrade(
 
     let mut addressee_id: u32 = 0;
     let sender_id: u32 = jwt_payload.id;
+    let sender_nickname = jwt_payload.nickname.clone();
     while let Some(Ok(msg)) = receiver_sock.next().await {
         if let Message::Text(p) = msg {
             match Request::from(&p) {
                 Ok(my_message) => {
                     if let Request::InitChat { addressee_nickname } = my_message {
+                        if addressee_nickname == jwt_payload.nickname {
+                            let failure_msg = Response::ChatInitFailure {
+                                error: "You can chat with yourself!".to_string(),
+                            }
+                            .as_json_str()
+                            .unwrap();
+                            sender_sock.send(Message::Text(failure_msg)).await.unwrap();
+                            break;
+                        }
                         addressee_id = if let Ok(Some(user)) =
                             user_repo.get_by_nickname(&addressee_nickname).await
                         {
@@ -225,11 +244,29 @@ async fn on_upgrade(
     }
 
     let mut send_task = tokio::spawn(async move {
-        while let Some(msg) = receiver_chan.recv().await {
-            match msg.as_json_str() {
+        while let Some(ref response) = receiver_chan.recv().await {
+            let msg_payload = match response {
+                Response::Msg { msg, is_sender: _ } => msg,
+                _ => unreachable!(),
+            };
+            match response.as_json_str() {
                 Ok(json) => {
                     if let Err(e) = sender_sock.send(Message::Text(json)).await {
                         eprintln!("Error sending message: {e}");
+                    } else {
+                        if let Some(sender) = notification_repo
+                            .notifications
+                            .read()
+                            .await
+                            .get(&addressee_id)
+                        {
+                            if let Err(e) = sender.chan.send(Notification {
+                                addressee_nickname: sender_nickname.clone(),
+                                message: msg_payload.clone(),
+                            }) {
+                                eprintln!("Error trying to send notificaiton: {e}");
+                            }
+                        }
                     }
                 }
                 Err(e) => eprintln!("Error parsing message from clinet: {e}"),
