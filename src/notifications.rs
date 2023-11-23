@@ -42,13 +42,12 @@ pub async fn notifications_handler(
     match extract_jwt(headers) {
         Ok(jwt_payload) => {
             let (sender, receiver) = tokio::sync::mpsc::unbounded_channel::<Notification>();
-            state
+            let _ = state
                 .notification_repo
                 .notifications
                 .write()
                 .await
-                .insert(jwt_payload.id, Notifier { chan: sender })
-                .unwrap();
+                .insert(jwt_payload.id, Notifier { chan: sender });
             let stream = UnboundedReceiverStream::new(receiver)
                 .map(|n| serde_json::to_string(&n).map(|s| Event::default().data(s)));
             Sse::new(stream)

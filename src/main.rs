@@ -245,8 +245,8 @@ async fn on_upgrade(
 
     let mut send_task = tokio::spawn(async move {
         while let Some(ref response) = receiver_chan.recv().await {
-            let msg_payload = match response {
-                Response::Msg { msg, is_sender: _ } => msg,
+            let (msg_payload, is_sender) = match response {
+                Response::Msg { msg, is_sender } => (msg, is_sender),
                 _ => unreachable!(),
             };
             match response.as_json_str() {
@@ -254,17 +254,19 @@ async fn on_upgrade(
                     if let Err(e) = sender_sock.send(Message::Text(json)).await {
                         eprintln!("Error sending message: {e}");
                     } else {
-                        if let Some(sender) = notification_repo
-                            .notifications
-                            .read()
-                            .await
-                            .get(&addressee_id)
-                        {
-                            if let Err(e) = sender.chan.send(Notification {
-                                addressee_nickname: sender_nickname.clone(),
-                                message: msg_payload.clone(),
-                            }) {
-                                eprintln!("Error trying to send notificaiton: {e}");
+                        if *is_sender {
+                            if let Some(sender) = notification_repo
+                                .notifications
+                                .read()
+                                .await
+                                .get(&addressee_id)
+                            {
+                                if let Err(e) = sender.chan.send(Notification {
+                                    addressee_nickname: sender_nickname.clone(),
+                                    message: msg_payload.clone(),
+                                }) {
+                                    eprintln!("Error trying to send notificaiton: {e}");
+                                }
                             }
                         }
                     }
