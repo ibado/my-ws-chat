@@ -8,6 +8,10 @@ android {
     namespace 'com.example.my_ws_chat_client'
     compileSdk 34
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId "com.example.my_ws_chat_client"
         minSdk 26
@@ -19,6 +23,7 @@ android {
         vectorDrawables {
             useSupportLibrary true
         }
+        buildConfigField("String", "BACKEND_BASE_URL", '"http://10.0.2.2:3000"')
     }
 
     buildTypes {
@@ -59,6 +64,8 @@ dependencies {
     implementation 'androidx.compose.material3:material3'
 
     implementation 'io.ktor:ktor-client-okhttp:2.3.1'
+    implementation "com.squareup.okhttp3:okhttp:4.11.0"
+    implementation 'com.squareup.okhttp3:okhttp-sse:4.11.0'
     implementation "io.ktor:ktor-client-websockets:2.3.1"
     implementation 'androidx.security:security-crypto-ktx:1.1.0-alpha06'
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1'

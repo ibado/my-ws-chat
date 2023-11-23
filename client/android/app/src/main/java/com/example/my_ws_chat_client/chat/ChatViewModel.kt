@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import arrow.core.Either
 import arrow.core.left
 import arrow.core.right
+import com.example.my_ws_chat_client.BuildConfig
 import com.example.my_ws_chat_client.Message
 import com.example.my_ws_chat_client.MsgType
 import com.example.my_ws_chat_client.chat.Response.ChatInitFailure
@@ -31,6 +32,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import okhttp3.OkHttpClient
+import java.net.URI
 import java.util.concurrent.TimeUnit
 
 private typealias InitChatError = String
@@ -61,11 +63,12 @@ class ChatViewModel : ViewModel() {
     fun startChat(jwt: String, addressee: String) {
         if (isConnected) return
         viewModelScope.launch(coroutineExceptionHandler) {
+            val uri = URI(BuildConfig.BACKEND_BASE_URL)
             client.webSocket(
                 method = HttpMethod.Get,
-                host = HOST,
-                port = PORT,
-                path = PATH,
+                host = uri.host,
+                port = uri.port,
+                path = "/chat",
                 request = {
                     headers.append("Authorization", "Bearer $jwt")
                 }
@@ -156,9 +159,6 @@ class ChatViewModel : ViewModel() {
         emit(value.plus(message).toMutableList())
 
     companion object {
-        private const val HOST = "10.0.2.2"
-        private const val PORT = 3000
-        private const val PATH = "/chat"
         private const val INIT_CHAT_TIMEOUT_MS: Long = 1000
     }
 }

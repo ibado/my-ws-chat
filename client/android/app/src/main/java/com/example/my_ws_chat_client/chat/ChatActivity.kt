@@ -131,8 +131,8 @@ class ChatActivity : ComponentActivity() {
         }
 
     companion object {
-        private const val SENDER_TOKEN = "sender_token"
-        private const val ADDRESSEE_KEY = "addressee-key"
+        const val SENDER_TOKEN = "sender_token"
+        const val ADDRESSEE_KEY = "addressee-key"
 
         fun intent(from: Context, jwt: String, addressee: String): Intent =
             Intent(from, ChatActivity::class.java)

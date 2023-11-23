@@ -2,6 +2,7 @@ package com.example.my_ws_chat_client.login
 
 import android.util.Log
 import androidx.lifecycle.ViewModel
+import com.example.my_ws_chat_client.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType
@@ -12,19 +13,18 @@ import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
-
 class LoginViewModel : ViewModel() {
 
     private val client = OkHttpClient()
 
     suspend fun register(nickname: String, password: String): Boolean = withContext(Dispatchers.IO) {
         val body = prepareBody(nickname, password)
-        post("$BASE_URL/signup", body.toString()).getOrNull()?.code == 201
+        post("${BuildConfig.BACKEND_BASE_URL}/signup", body.toString()).getOrNull()?.code == 201
     }
 
     suspend fun login(nickname: String, password: String): LoginResult = withContext(Dispatchers.IO) {
         val body = prepareBody(nickname, password)
-        post("$BASE_URL/login", body.toString())
+        post("${BuildConfig.BACKEND_BASE_URL}/login", body.toString())
             .fold(
                 onSuccess = { (status, body) ->
                     when (status) {
@@ -77,7 +77,6 @@ class LoginViewModel : ViewModel() {
 
     companion object {
         private val TAG = LoginViewModel::class.java.simpleName
-        const val BASE_URL = "http://10.0.2.2:3000"
         val JSON: MediaType = "application/json".toMediaType()
     }
 }
