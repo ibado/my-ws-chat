@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.getValue
@@ -21,9 +22,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
@@ -41,6 +44,7 @@ import com.example.my_ws_chat_client.showToast
 import com.example.my_ws_chat_client.ui.theme.MywschatclientTheme
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.collectLatest
 
 class ChatActivity : ComponentActivity() {
 
@@ -115,8 +119,22 @@ class ChatActivity : ComponentActivity() {
     }
 
     @Composable
-    fun ChatView(messages: List<Message>, modifier: Modifier = Modifier) =
-        LazyColumn(modifier = modifier, contentPadding = PaddingValues(bottom = 50.dp)) {
+    fun ChatView(messages: List<Message>, modifier: Modifier = Modifier) {
+        val listState = rememberLazyListState()
+        LaunchedEffect(listState) {
+            snapshotFlow {
+                listState.layoutInfo.totalItemsCount
+            }
+                .collectLatest { listSize ->
+                    listSize.takeUnless { it == 0 }
+                        ?.let { listState.scrollToItem(listSize - 1) }
+                }
+        }
+        LazyColumn(
+            state = listState,
+            modifier = modifier,
+            contentPadding = PaddingValues(bottom = 50.dp)
+        ) {
             items(messages.size) {
                 val msg = messages[it]
                 val ta = if (msg.type == MsgType.ME) TextAlign.End else TextAlign.Start
@@ -129,6 +147,7 @@ class ChatActivity : ComponentActivity() {
                 )
             }
         }
+    }
 
     companion object {
         const val SENDER_TOKEN = "sender_token"
