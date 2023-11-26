@@ -40,7 +40,6 @@
         <activity
             android:name=".chat.ChatActivity"
             android:exported="true"
-            android:parentActivityName=".MainActivity"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Mywschatclient"
             android:windowSoftInputMode="adjustResize"

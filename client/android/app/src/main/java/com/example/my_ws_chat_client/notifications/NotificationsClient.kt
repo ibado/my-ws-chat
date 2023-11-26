@@ -15,13 +15,14 @@ import okhttp3.Response
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.cancellation.CancellationException
 
 object NotificationsClient {
     private const val TAG = "NotificationsClient"
 
-    suspend fun streamNotifications(jwt: String): Flow<String> = coroutineScope {
+    suspend fun streamNotifications(jwt: String): Flow<Message> = coroutineScope {
         val client = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.MINUTES)
             .writeTimeout(10, TimeUnit.MINUTES)
@@ -48,7 +49,10 @@ object NotificationsClient {
                 ) {
                     super.onEvent(eventSource, id, type, data)
                     Log.i(TAG, "onEvent(): $data")
-                    trySendBlocking(data)
+                    val message = JSONObject(data).let {
+                        Message(it.getString("addressee_nickname"), it.getString("message"))
+                    }
+                    trySendBlocking(message)
                         .onFailure { Log.e(TAG, "Error trying to send event!", it) }
                 }
 
@@ -64,4 +68,6 @@ object NotificationsClient {
             awaitClose { source.cancel() }
         }
     }
+
+    data class Message(val addresseeNick: String, val message: String)
 }
