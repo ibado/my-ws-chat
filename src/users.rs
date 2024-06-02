@@ -1,9 +1,9 @@
 use crate::types::Result;
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 
 #[derive(Clone, Debug)]
 pub struct UserRepo {
-    db_pool: PgPool,
+    db_pool: SqlitePool,
 }
 
 pub struct User {
@@ -12,7 +12,7 @@ pub struct User {
 }
 
 impl UserRepo {
-    pub fn new(pool: &PgPool) -> Self {
+    pub fn new(pool: &SqlitePool) -> Self {
         Self {
             db_pool: pool.clone(),
         }
@@ -20,7 +20,7 @@ impl UserRepo {
 
     pub async fn store(&self, nickname: String, password_hash: String) -> Result<()> {
         sqlx::query!(
-            "INSERT INTO users (nickname, password_hash) VALUES ($1, $2);",
+            "INSERT INTO users (nickname, password_hash) VALUES (?, ?);",
             nickname,
             password_hash,
         )
@@ -32,7 +32,7 @@ impl UserRepo {
 
     pub async fn get_by_nickname(&self, nickname: &str) -> Result<Option<User>> {
         match sqlx::query!(
-            "SELECT id, password_hash FROM users WHERE nickname = $1",
+            "SELECT id, password_hash FROM users WHERE nickname = ?",
             nickname,
         )
         .fetch_one(&self.db_pool)

@@ -1,8 +1,8 @@
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 
 #[derive(Clone, Debug)]
 pub struct MessageRepo {
-    db_pool: PgPool,
+    db_pool: SqlitePool,
 }
 
 #[derive(Clone, Debug)]
@@ -12,7 +12,7 @@ pub struct Message {
 }
 
 impl MessageRepo {
-    pub fn new(pool: &PgPool) -> Self {
+    pub fn new(pool: &SqlitePool) -> Self {
         Self {
             db_pool: pool.clone(),
         }
@@ -20,10 +20,10 @@ impl MessageRepo {
 
     pub async fn store_msg(&self, payload: String, sender: u32, addressee: u32) -> Option<()> {
         sqlx::query!(
-            "INSERT INTO messages (payload, sender_id, addressee_id) VALUES ($1, $2, $3);",
+            "INSERT INTO messages (payload, sender_id, addressee_id, timestamp) VALUES (?, ?, ?, datetime('now'));",
             payload,
-            sender as i32,
-            addressee as i32,
+            sender,
+            addressee,
         )
         .fetch_one(&self.db_pool)
         .await
@@ -36,10 +36,10 @@ impl MessageRepo {
             r#"
             SELECT payload, sender_id as author FROM messages
             WHERE sender_id = $1 AND addressee_id = $2 OR sender_id = $2 AND addressee_id = $1
-            ORDER BY timestamp;
+            ORDER BY datetime(timestamp);
             "#,
-            sender as i32,
-            addressee as i32,
+            sender,
+            addressee,
         )
         .fetch_all(&self.db_pool)
         .await
@@ -47,7 +47,7 @@ impl MessageRepo {
         .iter()
         .map(|r| Message {
             payload: r.payload.clone(),
-            is_sender: r.author == (sender as i32),
+            is_sender: r.author == (sender as i64),
         })
         .collect()
     }

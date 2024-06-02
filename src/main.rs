@@ -21,7 +21,8 @@ use crate::{
     notifications::{notifications_handler, Notification},
 };
 use serde::{Deserialize, Serialize};
-use sqlx::postgres::PgPoolOptions;
+use sqlx::migrate::MigrateDatabase;
+use sqlx::{Sqlite, SqlitePool};
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedSender},
     RwLock,
@@ -102,10 +103,16 @@ struct UserAuthenticated {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL env var is missing!");
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&db_url)
-        .await?;
+    if Sqlite::database_exists(&db_url).await.unwrap_or(false) {
+        println!("DB is already created, skipping...")
+    } else {
+        println!("Creating database {}...", &db_url);
+        match Sqlite::create_database(&db_url).await {
+            Ok(_) => println!("DB created!"),
+            Err(error) => panic!("error: {}", error),
+        }
+    }
+    let pool = SqlitePool::connect(&db_url).await?;
     sqlx::migrate!().run(&pool).await?;
 
     let message_repo = MessageRepo::new(&pool);
@@ -253,20 +260,18 @@ async fn on_upgrade(
                 Ok(json) => {
                     if let Err(e) = sender_sock.send(Message::Text(json)).await {
                         eprintln!("Error sending message: {e}");
-                    } else {
-                        if *is_sender {
-                            if let Some(sender) = notification_repo
-                                .notifications
-                                .read()
-                                .await
-                                .get(&addressee_id)
-                            {
-                                if let Err(e) = sender.chan.send(Notification {
-                                    addressee_nickname: sender_nickname.clone(),
-                                    message: msg_payload.clone(),
-                                }) {
-                                    eprintln!("Error trying to send notificaiton: {e}");
-                                }
+                    } else if *is_sender {
+                        if let Some(sender) = notification_repo
+                            .notifications
+                            .read()
+                            .await
+                            .get(&addressee_id)
+                        {
+                            if let Err(e) = sender.chan.send(Notification {
+                                addressee_nickname: sender_nickname.clone(),
+                                message: msg_payload.clone(),
+                            }) {
+                                eprintln!("Error trying to send notificaiton: {e}");
                             }
                         }
                     }
@@ -292,8 +297,8 @@ async fn on_upgrade(
                             eprintln!("wrong msg here. (should be MyMessage::Msg)!");
                         }
                     },
-                    Err(_) => {
-                        eprintln!("wrong payload!");
+                    Err(e) => {
+                        eprintln!("wrong payload: {:?}!", e);
                     }
                 }
             }

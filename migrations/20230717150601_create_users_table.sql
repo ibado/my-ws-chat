@@ -1,6 +1,6 @@
 --  create users table
-CREATE TABLE users(
-    id SERIAL PRIMARY KEY,
-    nickname TEXT NOT NULL ,
+CREATE TABLE IF NOT EXISTS users(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nickname TEXT NOT NULL,
     password_hash TEXT NOT NULL
 );
