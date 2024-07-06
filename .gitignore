@@ -1,4 +1,3 @@
 /target
 /client/rust-client/target
 .idea/
-rds.sh

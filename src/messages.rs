@@ -20,7 +20,10 @@ impl MessageRepo {
 
     pub async fn store_msg(&self, payload: String, sender: u32, addressee: u32) -> Option<()> {
         sqlx::query!(
-            "INSERT INTO messages (payload, sender_id, addressee_id, timestamp) VALUES (?, ?, ?, datetime('now'));",
+            r#"
+            INSERT INTO messages (payload, sender_id, addressee_id, timestamp)
+            VALUES (?, ?, ?, datetime('now'));
+            "#,
             payload,
             sender,
             addressee,
