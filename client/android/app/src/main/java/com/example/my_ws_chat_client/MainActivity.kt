@@ -40,9 +40,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.app.ActivityCompat.checkSelfPermission
 import com.example.my_ws_chat_client.chat.ChatActivity
-import com.example.my_ws_chat_client.notifications.NotificationsService
 import com.example.my_ws_chat_client.ui.theme.MywschatclientTheme
 
 class MainActivity : ComponentActivity() {
@@ -138,20 +136,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(this, POST_NOTIFICATIONS) == PERMISSION_GRANTED) {
-                startNotificationService()
-            } else {
-                registerForActivityResult(RequestPermission()) { isGranted ->
-                    if (isGranted) startNotificationService()
-                    else {
-                        showToast("You won't get notifications for new messages!")
-                        showToast("For enable it go to Settings -> Applications -> Permissions")
-                    }
-                }.launch(POST_NOTIFICATIONS)
-            }
-        } else {
-            startNotificationService()
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(POST_NOTIFICATIONS) != PERMISSION_GRANTED
+        ) {
+            registerForActivityResult(RequestPermission()) { isGranted ->
+                if (!isGranted) {
+                    showToast("You won't get notifications for new messages!")
+                    showToast("For enable it go to Settings -> Applications -> Permissions")
+                }
+            }.launch(POST_NOTIFICATIONS)
         }
     }
 
@@ -169,11 +163,6 @@ class MainActivity : ComponentActivity() {
     private fun startChatActivity(jwt: String, addressee: String) {
         val intent = ChatActivity.intent(this@MainActivity, jwt, addressee)
         startActivity(intent)
-    }
-
-    private fun startNotificationService() {
-        Intent(this@MainActivity, NotificationsService::class.java)
-            .let(::startForegroundService)
     }
 
     companion object {

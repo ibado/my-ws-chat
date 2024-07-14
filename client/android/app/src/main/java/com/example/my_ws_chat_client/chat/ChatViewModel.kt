@@ -147,12 +147,9 @@ class ChatViewModel : ViewModel() {
 
     private suspend fun DefaultClientWebSocketSession.getDecodedResponseOrNull(
     ): Response? = incoming.receive()
-        .let { frame ->
-            frame.takeIf { it is Frame.Text }
-                ?.data
-                ?.decodeToString()
-                ?.let { Json.decodeFromString(it) }
-        }
+        .takeIf { it is Frame.Text }
+        ?.data?.decodeToString()
+        ?.let(Json.Default::decodeFromString)
 
 
     private suspend fun MutableStateFlow<MutableList<Message>>.emitNewMsg(message: Message) =
