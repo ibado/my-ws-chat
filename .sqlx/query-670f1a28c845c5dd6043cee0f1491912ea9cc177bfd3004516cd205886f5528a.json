@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT m.id, m.payload, u.nickname FROM messages m\n            INNER JOIN users u ON u.id = m.sender_id\n            WHERE addressee_id = ? AND received = 0\n            ORDER BY datetime(timestamp);\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "payload",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "nickname",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "670f1a28c845c5dd6043cee0f1491912ea9cc177bfd3004516cd205886f5528a"
+}

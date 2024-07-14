@@ -5,12 +5,12 @@ use axum::{
     response::IntoResponse,
     Json, Router,
 };
-use notifications::NotificationRepo;
+use std::collections::HashMap;
 use std::error::Error;
 use users::UserRepo;
 
 use crate::chat::ClientRepo;
-use crate::{messages::MessageRepo, notifications::notifications_handler};
+use crate::messages::MessageRepo;
 use serde::{Deserialize, Serialize};
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{Sqlite, SqlitePool};
@@ -18,7 +18,6 @@ use sqlx::{Sqlite, SqlitePool};
 mod auth;
 mod chat;
 mod messages;
-mod notifications;
 mod types;
 mod users;
 
@@ -29,7 +28,6 @@ pub struct MyState {
     client_repo: chat::ClientRepo,
     message_repo: MessageRepo,
     user_repo: UserRepo,
-    notification_repo: NotificationRepo,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -41,6 +39,12 @@ struct UserReq {
 #[derive(Debug, Deserialize, Serialize)]
 struct UserAuthenticated {
     jwt: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct UserMessages {
+    nickname: String,
+    messages: Vec<String>,
 }
 
 #[tokio::main]
@@ -62,14 +66,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         client_repo: ClientRepo::new(),
         message_repo: MessageRepo::new(&pool),
         user_repo: UserRepo::new(&pool),
-        notification_repo: NotificationRepo::new(),
     };
 
     let app = Router::new()
         .route("/chat", axum::routing::get(chat_handler))
         .route("/signup", axum::routing::post(signup_handler))
         .route("/login", axum::routing::post(login_handler))
-        .route("/notifications", axum::routing::get(notifications_handler))
+        .route("/messages", axum::routing::get(messages_handler))
         .with_state(state.clone());
 
     axum::Server::bind(&"0.0.0.0:7777".parse()?)
@@ -107,21 +110,40 @@ async fn chat_handler(
         message_repo,
         client_repo,
         user_repo,
-        notification_repo,
     }): State<MyState>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
     match extract_jwt(headers) {
         Ok(jwt_payload) => ws.on_upgrade(|socket| {
-            chat::on_upgrade(
-                socket,
-                client_repo,
-                message_repo,
-                user_repo,
-                notification_repo,
-                jwt_payload,
-            )
+            chat::on_upgrade(socket, client_repo, message_repo, user_repo, jwt_payload)
         }),
         Err(_) => StatusCode::UNAUTHORIZED.into_response(),
+    }
+}
+
+async fn messages_handler(State(state): State<MyState>, headers: HeaderMap) -> AxumResponse {
+    match extract_jwt(headers) {
+        Ok(jwt) => {
+            let mut res = HashMap::new();
+            let msgs: Vec<_> = state
+                .message_repo
+                .get_unreceived_msgs(jwt.id)
+                .await
+                .into_iter()
+                .map(|m| (m.sender.unwrap(), m.payload))
+                .collect();
+            for (sender, payload) in msgs.into_iter() {
+                res.entry(sender).or_insert(Vec::new()).push(payload);
+            }
+            let r: Vec<_> = res
+                .into_iter()
+                .map(|(nickname, messages)| UserMessages { nickname, messages })
+                .collect();
+            Ok(Json(r).into_response())
+        }
+        Err(e) => {
+            eprintln!("error getting messages {:?}", e);
+            Ok(StatusCode::UNAUTHORIZED.into_response())
+        }
     }
 }

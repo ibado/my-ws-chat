@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT id, payload, sender_id as author FROM messages\n            WHERE sender_id = $1 AND addressee_id = $2 OR sender_id = $2 AND addressee_id = $1\n            ORDER BY datetime(timestamp);\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "payload",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "author",
+        "ordinal": 2,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a8d2621a7afb8ebc75995792e5535cc4a809d94a1ad4f147fb1d25c16267d27b"
+}

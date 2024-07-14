@@ -1,0 +1,1 @@
+ALTER TABLE messages ADD COLUMN received INTEGER NOT NULL CHECK (received IN (0, 1)) DEFAULT 0;
