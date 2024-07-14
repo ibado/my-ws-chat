@@ -5,12 +5,12 @@ import json
 
 def write_msg_blocking(ws):
     try:
-        userinput = input("<addressee,sender>: ").split(",")
-        init_chat = json.dumps({'addressee': userinput[0], 'sender': userinput[1]})
+        addressee = input("<addressee>: ")
+        init_chat = json.dumps({'addressee_nickname': addressee, 'type': 'init_chat' })
         ws.send(init_chat)
         while True:
             msg_input = input()
-            message = json.dumps({'msg': msg_input, 'author': userinput[1]})
+            message = json.dumps({'msg': msg_input, 'type': 'msg' })
             ws.send(message)
     except WebSocketConnectionClosedException as e:
         print("Stop sending msgs..." + str(e))
@@ -27,7 +27,8 @@ def publish_msgs(ws):
 
 def main():
     print("Creating ws connection...")
-    ws = create_connection("ws://localhost:3000/chat")
+    jwt = input("jwt: ")
+    ws = create_connection("ws://localhost:7777/chat", header={"Authorization": f"Bearer {jwt}"})
     print("Connection established!")
     writing_msgs = threading.Thread(target=write_msg_blocking, args=[ws])
     reading_msgs = threading.Thread(target=publish_msgs, args=[ws])
