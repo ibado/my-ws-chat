@@ -8,7 +8,8 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationCompat.BigTextStyle
-import androidx.work.Worker
+import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.example.my_ws_chat_client.App.Companion.CHANNEL_ID
 import com.example.my_ws_chat_client.BuildConfig
@@ -22,13 +23,20 @@ import org.json.JSONArray
 class NotificationsWorker(
     private val context: Context,
     workerParams: WorkerParameters
-) : Worker(context, workerParams) {
+) : CoroutineWorker(context, workerParams) {
 
     private val sharedPreferences = context.sharedPreferences()
 
     private val client = OkHttpClient()
 
-    override fun doWork(): Result {
+    override suspend fun doWork(): Result {
+        setForeground(ForegroundInfo(666, NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("MyWsChat :)")
+            .setContentText("Checking for messages...")
+            .setOngoing(true)
+            .build()))
+
         val jwt = sharedPreferences.getString("jwt", null)
             ?: return Result.failure()
         val request: Request = Request.Builder()

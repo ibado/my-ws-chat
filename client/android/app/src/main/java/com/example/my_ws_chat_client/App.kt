@@ -3,6 +3,7 @@ package com.example.my_ws_chat_client
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.my_ws_chat_client.notifications.NotificationsWorker
@@ -24,7 +25,12 @@ class App : Application() {
 
         val request = PeriodicWorkRequestBuilder<NotificationsWorker>(Duration.ofMinutes(15))
             .build()
-        WorkManager.getInstance(this).enqueue(request)
+        WorkManager.getInstance(this)
+            .enqueueUniquePeriodicWork(
+                "check-notifications",
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request
+            )
     }
 
     companion object {
