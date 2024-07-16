@@ -1,6 +1,6 @@
 use auth::extract_jwt;
 use axum::{
-    extract::{State, WebSocketUpgrade},
+    extract::{Query, State, WebSocketUpgrade},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json, Router,
@@ -104,6 +104,11 @@ async fn login_handler(State(state): State<MyState>, body: Json<UserReq>) -> Axu
     Ok(res)
 }
 
+#[derive(Deserialize)]
+struct ChatQueryParams {
+    addressee_nickname: String,
+}
+
 async fn chat_handler(
     ws: WebSocketUpgrade,
     State(MyState {
@@ -112,12 +117,22 @@ async fn chat_handler(
         user_repo,
     }): State<MyState>,
     headers: HeaderMap,
+    Query(ChatQueryParams { addressee_nickname }): Query<ChatQueryParams>,
 ) -> impl IntoResponse {
-    match extract_jwt(headers) {
-        Ok(jwt_payload) => ws.on_upgrade(|socket| {
-            chat::on_upgrade(socket, client_repo, message_repo, user_repo, jwt_payload)
+    match user_repo
+        .get_by_nickname(&addressee_nickname)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .and_then(|user_op| user_op.ok_or(StatusCode::NOT_FOUND).map(|user| user.id))
+        .and_then(|user_id| {
+            extract_jwt(headers)
+                .map(|jwt_pyload| (user_id, jwt_pyload))
+                .map_err(|_| StatusCode::UNAUTHORIZED)
+        }) {
+        Ok((addressee_id, jwt_payload)) => ws.on_upgrade(move |socket| {
+            chat::on_upgrade(socket, client_repo, message_repo, jwt_payload, addressee_id)
         }),
-        Err(_) => StatusCode::UNAUTHORIZED.into_response(),
+        Err(e) => e.into_response(),
     }
 }
 

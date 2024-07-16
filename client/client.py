@@ -5,9 +5,6 @@ import json
 
 def write_msg_blocking(ws):
     try:
-        addressee = input("<addressee>: ")
-        init_chat = json.dumps({'addressee_nickname': addressee, 'type': 'init_chat' })
-        ws.send(init_chat)
         while True:
             msg_input = input()
             message = json.dumps({'msg': msg_input, 'type': 'msg' })
@@ -28,7 +25,11 @@ def publish_msgs(ws):
 def main():
     print("Creating ws connection...")
     jwt = input("jwt: ")
-    ws = create_connection("ws://localhost:7777/chat", header={"Authorization": f"Bearer {jwt}"})
+    addressee = input("<addressee>: ")
+    ws = create_connection(
+        f"ws://localhost:7777/chat?addressee_nickname={addressee}",
+        header={"Authorization": f"Bearer {jwt}"},
+    )
     print("Connection established!")
     writing_msgs = threading.Thread(target=write_msg_blocking, args=[ws])
     reading_msgs = threading.Thread(target=publish_msgs, args=[ws])

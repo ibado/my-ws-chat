@@ -1,7 +1,6 @@
 use crate::auth;
 use crate::messages::Message;
 use crate::messages::MessageRepo;
-use crate::users::UserRepo;
 use axum::extract::ws::Message as WsMessage;
 use axum::extract::ws::WebSocket;
 use futures_util::stream::SplitSink;
@@ -34,7 +33,6 @@ struct Client {
 #[derive(Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Request {
-    InitChat { addressee_nickname: String },
     Msg { msg: String },
 }
 
@@ -47,8 +45,6 @@ impl Request {
 #[derive(Serialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
-    ChatInitSuccess,
-    ChatInitFailure { error: String },
     Msg { msg: String, is_sender: bool },
 }
 
@@ -62,71 +58,20 @@ pub async fn on_upgrade(
     socket: WebSocket,
     clients: ClientRepo,
     msg_repo: MessageRepo,
-    user_repo: UserRepo,
     jwt_payload: auth::Payload,
+    addressee_id: u32,
 ) {
-    let (mut sender_sock, mut receiver_sock) = socket.split();
+    let (mut sender_sock, receiver_sock) = socket.split();
     let (sender_chan, receiver_chan) = unbounded_channel::<Message>();
 
-    let mut addressee_id: u32 = 0;
     let sender_id: u32 = jwt_payload.id;
-    while let Some(Ok(msg)) = receiver_sock.next().await {
-        if let WsMessage::Text(p) = msg {
-            match Request::from(&p) {
-                Ok(my_message) => {
-                    if let Request::InitChat { addressee_nickname } = my_message {
-                        if addressee_nickname == jwt_payload.nickname {
-                            let failure_msg = Response::ChatInitFailure {
-                                error: "You can chat with yourself!".to_string(),
-                            }
-                            .as_json_str()
-                            .unwrap();
-                            sender_sock
-                                .send(WsMessage::Text(failure_msg))
-                                .await
-                                .unwrap();
-                            break;
-                        }
-                        addressee_id = if let Ok(Some(user)) =
-                            user_repo.get_by_nickname(&addressee_nickname).await
-                        {
-                            user.id
-                        } else {
-                            let failure_msg = Response::ChatInitFailure {
-                                error: "Addressee not found!".to_string(),
-                            }
-                            .as_json_str()
-                            .unwrap();
-                            sender_sock
-                                .send(WsMessage::Text(failure_msg))
-                                .await
-                                .unwrap();
-                            break;
-                        };
-                        clients
-                            .clients
-                            .write()
-                            .await
-                            .insert(sender_id, Client { chan: sender_chan });
 
-                        let success_msg = Response::ChatInitSuccess.as_json_str().unwrap();
-                        sender_sock
-                            .send(WsMessage::Text(success_msg))
-                            .await
-                            .unwrap();
-                        send_stored_msgs(&msg_repo, &mut sender_sock, sender_id, addressee_id)
-                            .await;
-
-                        break;
-                    }
-                    eprintln!("wrong msg! (should be InitChat)");
-                }
-                Err(e) => {
-                    eprintln!("wrong payload! Error: {:?}", e);
-                }
-            }
-        }
-    }
+    clients
+        .clients
+        .write()
+        .await
+        .insert(sender_id, Client { chan: sender_chan });
+    send_stored_msgs(&msg_repo, &mut sender_sock, sender_id, addressee_id).await;
 
     let mut send_task = tokio::spawn(send_task(receiver_chan, sender_sock, msg_repo.clone()));
 
@@ -190,9 +135,6 @@ async fn receive_task(
                             send_msg_to(&clients, sender_id, true, &msg, msg_id),
                             send_msg_to(&clients, addressee_id, false, &msg, msg_id),
                         );
-                    }
-                    _ => {
-                        eprintln!("wrong msg here. (should be Message::Msg)!");
                     }
                 },
                 Err(e) => {

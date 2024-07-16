@@ -3,20 +3,16 @@ package com.example.my_ws_chat_client.chat
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import arrow.core.Either
-import arrow.core.left
-import arrow.core.right
 import com.example.my_ws_chat_client.BuildConfig
 import com.example.my_ws_chat_client.Message
 import com.example.my_ws_chat_client.MsgType
-import com.example.my_ws_chat_client.chat.Response.ChatInitFailure
-import com.example.my_ws_chat_client.chat.Response.ChatInitSuccess
 import com.example.my_ws_chat_client.chat.Response.Msg
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
+import io.ktor.client.request.parameter
 import io.ktor.http.HttpMethod
 import io.ktor.websocket.Frame
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -28,7 +24,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import okhttp3.OkHttpClient
@@ -71,17 +66,13 @@ class ChatViewModel : ViewModel() {
                 path = "/chat",
                 request = {
                     headers.append("Authorization", "Bearer $jwt")
+                    parameter("addressee_nickname", addressee)
                 }
             ) {
-                initChat(this@webSocket, addressee).fold(
-                    ifLeft = { errorFlow.emit(it) },
-                    ifRight = {
-                        val receive = async { receiveMessages(this@webSocket) }
-                        val send = async { sendMessages(this@webSocket) }
-                        isConnected = true
-                        awaitAll(receive, send)
-                    }
-                )
+                val receive = async { receiveMessages(this@webSocket) }
+                val send = async { sendMessages(this@webSocket) }
+                isConnected = true
+                awaitAll(receive, send)
             }
         }
     }
@@ -97,23 +88,6 @@ class ChatViewModel : ViewModel() {
     override fun onCleared() {
         msgChannel.close()
         client.close()
-    }
-
-    private suspend fun initChat(
-        socket: DefaultClientWebSocketSession,
-        addressee: String
-    ): Either<InitChatError, Unit> {
-        val starChatMsg = Json.encodeToString<Request>(Request.InitChat(addressee))
-        socket.send(Frame.Text(starChatMsg))
-        return withTimeoutOrNull(INIT_CHAT_TIMEOUT_MS) {
-            socket.getDecodedResponseOrNull()?.let { response ->
-                when (response) {
-                    is ChatInitFailure -> response.error.left()
-                    ChatInitSuccess -> Unit.right()
-                    is Msg -> "Unexpected Message!".left()
-                }
-            } ?: "Frame is not text!".left()
-        } ?: "Server timeout".left()
     }
 
     private suspend fun sendMessages(
@@ -132,9 +106,6 @@ class ChatViewModel : ViewModel() {
         while (isActive) {
             socket.getDecodedResponseOrNull()?.let { response ->
                 when (response) {
-                    is ChatInitFailure, ChatInitSuccess ->
-                        Log.e(javaClass.name, "Wrong msg, the chat is already initiated!")
-
                     is Msg -> {
                         val type = if (response.isSender) MsgType.ME else MsgType.OTHER
                         val message = Message(response.msg, type)
@@ -154,8 +125,4 @@ class ChatViewModel : ViewModel() {
 
     private suspend fun MutableStateFlow<MutableList<Message>>.emitNewMsg(message: Message) =
         emit(value.plus(message).toMutableList())
-
-    companion object {
-        private const val INIT_CHAT_TIMEOUT_MS: Long = 1000
-    }
 }
